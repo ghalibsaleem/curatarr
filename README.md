@@ -84,6 +84,29 @@ Then, in Dispatcharr → M3U & EPG Manager, add **each** account shown under
 **Dispatcharr setup** as an **Xtream Codes** account (Server URL
 `http://<truenas-ip>:8753`, **VOD Scanning ON**, **max connections 1**).
 
+## Publishing the image (GHCR)
+
+A GitHub Action (`.github/workflows/docker-publish.yml`) builds a **multi-arch**
+image (linux/amd64 + linux/arm64 — Intel/AMD, Apple Silicon, 64-bit Raspberry Pi)
+and pushes it to `ghcr.io/<owner>/curatarr` on every push to `main` and on `v*`
+tags. Docker pulls the right architecture automatically. To use it:
+
+```bash
+git remote add origin git@github.com:<you>/curatarr.git
+git push -u origin main          # triggers the build → ghcr.io/<you>/curatarr:latest
+git tag v0.1.0 && git push --tags   # also publishes :v0.1.0
+```
+
+Then either make the GHCR package **public** (GitHub → Packages → curatarr →
+visibility), or `docker login ghcr.io` on the TrueNAS box with a PAT
+(`read:packages`). Finally point the compose at it:
+
+```yaml
+    image: ghcr.io/<you>/curatarr:latest
+    pull_policy: always
+    # (remove the build: / image: curatarr:latest / pull_policy: build lines)
+```
+
 ## Config (environment)
 
 | Var | Default | Purpose |

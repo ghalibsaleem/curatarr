@@ -12,9 +12,14 @@
 
 services:
   curatarr:
+    # Default: build from this repo on the box.
     build: /mnt/MainPool/AppsStorage/Curatarr
     image: curatarr:latest
     pull_policy: build
+    # To pull the published image from GHCR instead (after the GitHub Action
+    # publishes it), replace the three lines above with:
+    #   image: ghcr.io/<your-github-user>/curatarr:latest
+    #   pull_policy: always
     container_name: curatarr
     ports:
       - "8753:8000"          # host:container
