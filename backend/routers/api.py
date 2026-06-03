@@ -5,6 +5,7 @@ import urllib.parse
 
 from fastapi import APIRouter, Query, Request
 
+from .. import __version__
 from ..container import catalog, imports, subscriptions, sync
 from ..errors import ConfigError
 from ..schemas import CountsRequest, ImportRequest, SourceRequest, UnimportRequest
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/api")
 def status():
     subs = subscriptions.get_subs()
     return {
+        "version": __version__,
         "source_url": subs[0]["base"] if subs else "",
         "sub_count": len(subs),
         "last_sync": subscriptions.meta.get("last_sync"),

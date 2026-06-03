@@ -8,6 +8,7 @@ let hasSource = false;
 export async function refreshStatus() {
   const s = await api("/api/status");
   const c = s.counts;
+  if (s.version) $("#appVersion").textContent = "v" + s.version;
   hasSource = !!s.source_url;
   let txt = `live ${c.live} · movies ${c.movie} · series ${c.series} · imported ${c.imported}`;
   if (!s.source_url) txt = "no source set — click Source…";

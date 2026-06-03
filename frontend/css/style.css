@@ -20,6 +20,7 @@ header {
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
 header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+header h1 .ver { font-size: .7rem; font-weight: 400; color: var(--muted); }
 .tabs { display: flex; gap: .25rem; }
 .tab {
   background: transparent; color: var(--muted); border: none; cursor: pointer;

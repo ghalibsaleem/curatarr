@@ -17,8 +17,8 @@ services:
     image: curatarr:latest
     pull_policy: build
     # To pull the published image from GHCR instead (after the GitHub Action
-    # publishes it), replace the three lines above with:
-    #   image: ghcr.io/<your-github-user>/curatarr:latest
+    # publishes it), replace the three lines above with a pinned version:
+    #   image: ghcr.io/<your-github-user>/curatarr:0.1.0   # or :latest
     #   pull_policy: always
     container_name: curatarr
     ports:
