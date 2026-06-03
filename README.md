@@ -52,7 +52,7 @@ PROVIDER Xtream API ──read catalogue──▶  Curatarr  ──serve only PI
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-DB_PATH=./curator.db .venv/bin/uvicorn backend.app:app --port 8753
+DB_PATH=./curator.db .venv/bin/uvicorn backend.main:app --port 8753
 # open http://localhost:8753
 #  1) "Source…"  → add one or more provider subscriptions (Server URL/Username/Password)
 #  2) "Sync"     → pulls the catalogue (~60s)

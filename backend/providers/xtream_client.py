@@ -1,10 +1,7 @@
 """Client for the *provider's* Xtream Codes API (the input side).
 
-Replaces parsing the giant flat M3U: we read categories, movies, series and
-(lazily) episodes straight from the provider's player_api.php. Credentials and
-base URL are derived from the saved source URL (the get.php?...m3u_plus link
-already contains username/password), so the user configures nothing extra.
-
+Reads categories, movies, series and (lazily) episodes from the provider's
+player_api.php. Credentials/base URL are derived from the saved source URL.
 Stdlib only (urllib) to avoid new dependencies.
 """
 from __future__ import annotations
@@ -15,14 +12,13 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
+_KIND_SEG = {"movie": "movie", "series": "series", "live": "live"}
+
 
 def stream_hash(url: str) -> str:
     """Stable identity for a stream (idempotency/dedup key). The provider URL
     embeds the stream id, so it uniquely identifies the item."""
     return hashlib.sha1(url.encode("utf-8", "replace")).hexdigest()
-
-
-_KIND_SEG = {"movie": "movie", "series": "series", "live": "live"}
 
 
 def stream_url(base: str, username: str, password: str, kind: str,
@@ -93,7 +89,7 @@ class ProviderXC:
     def series_info(self, series_id):
         return self._get("get_series_info", series_id=series_id)
 
-    # --- stream URLs (what we store / redirect to) ------------------------
+    # --- stream URLs ------------------------------------------------------
     def live_url(self, stream_id, ext="ts"):
         return f"{self.base}/live/{self.username}/{self.password}/{stream_id}.{ext}"
 
