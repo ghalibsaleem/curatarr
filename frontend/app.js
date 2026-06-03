@@ -141,32 +141,99 @@ document.querySelectorAll(".tab").forEach(btn => {
 });
 
 // --- imported view --------------------------------------------------------
+let impData = [];
+async function removeIds(ids) {
+  await api("/api/unimport", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+  await refreshStatus();
+  await loadImported();
+}
+
 async function loadImported() {
   const r = await api("/api/imported");
+  impData = r.imported;
   const list = $("#list");
   list.innerHTML = "";
-  $("#resultMeta").textContent = `${r.imported.length.toLocaleString()} imported`;
-  $("#pageInfo").textContent = "";
-  $("#prev").disabled = true; $("#next").disabled = true;
-  if (!r.imported.length) { list.append(el("div", "empty", "Nothing imported yet.")); return; }
-  for (const it of r.imported) list.append(importedRow(it));
+  $("#pageInfo").textContent = ""; $("#prev").disabled = true; $("#next").disabled = true;
+  if (!impData.length) {
+    $("#resultMeta").textContent = "0 imported";
+    list.append(el("div", "empty", "Nothing imported yet."));
+    return;
+  }
+  const live = impData.filter(x => x.kind === "live");
+  const movies = impData.filter(x => x.kind === "movie");
+  const seriesEps = impData.filter(x => x.kind === "series");
+  // group series episodes by series_key
+  const seriesMap = new Map();
+  for (const e of seriesEps) {
+    const g = seriesMap.get(e.series_key) || { key: e.series_key, name: e.series_name || e.name, seasons: new Set(), eps: [] };
+    g.seasons.add(e.season); g.eps.push(e); seriesMap.set(e.series_key, g);
+  }
+  $("#resultMeta").textContent =
+    `${live.length} live · ${movies.length} movies · ${seriesMap.size} series (${seriesEps.length} ep)`;
+
+  if (live.length) { list.append(impHeader("Live")); live.forEach(it => list.append(impFlatRow(it))); }
+  if (movies.length) { list.append(impHeader("Movies")); movies.forEach(it => list.append(impFlatRow(it))); }
+  if (seriesMap.size) {
+    list.append(impHeader("Series"));
+    [...seriesMap.values()].sort((a, b) => a.name.localeCompare(b.name)).forEach(g => list.append(impSeriesRow(g)));
+  }
 }
-function importedRow(it) {
+function impHeader(t) { return el("div", "imp-section", t); }
+
+function impFlatRow(it) {
   const row = el("div", "row");
-  row.append(el("span", "badge", it.kind));
   row.append(el("span", "name", it.name));
   row.append(el("span", "grp", it.group_title || ""));
-  const btn = el("button", "", "Remove");
-  btn.onclick = async () => {
-    btn.disabled = true;
-    try {
-      await api("/api/unimport", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [it.id] }) });
-      row.remove(); refreshStatus();
-    } catch (e) { toast("Remove failed: " + e); btn.disabled = false; }
-  };
+  const btn = el("button", "danger", "Remove");
+  btn.onclick = () => { btn.disabled = true; removeIds([it.id]).catch(e => { toast("Remove failed: " + e); btn.disabled = false; }); };
   row.append(btn);
   return row;
 }
+
+function impSeriesRow(g) {
+  const row = el("div", "row");
+  const name = el("span", "name");
+  name.append(document.createTextNode(g.name + " "));
+  name.append(el("span", "badge", `${g.seasons.size} season${g.seasons.size === 1 ? "" : "s"} · ${g.eps.length} ep`));
+  row.append(name);
+  const browse = el("button", "", "Browse");
+  browse.onclick = () => openImpSeries(g.key);
+  const rm = el("button", "danger", "Remove all");
+  rm.onclick = () => { rm.disabled = true; removeIds(g.eps.map(e => e.id)).catch(e => { toast("Remove failed: " + e); rm.disabled = false; }); };
+  row.append(browse, rm);
+  return row;
+}
+
+function openImpSeries(key) {
+  const eps = impData.filter(x => x.kind === "series" && x.series_key === key);
+  if (!eps.length) return;
+  $("#impSeriesTitle").textContent = eps[0].series_name || eps[0].name;
+  $("#removeWholeSeries").onclick = () => removeIds(eps.map(e => e.id)).then(() => $("#impSeriesModal").classList.add("hidden")).catch(e => toast("Remove failed: " + e));
+  const wrap = $("#impSeasons");
+  wrap.innerHTML = "";
+  const bySeason = new Map();
+  for (const e of eps) { const s = e.season ?? 0; (bySeason.get(s) || bySeason.set(s, []).get(s)).push(e); }
+  [...bySeason.keys()].sort((a, b) => a - b).forEach(season => {
+    const seasonEps = bySeason.get(season);
+    const head = el("div", "season-head");
+    head.append(el("h3", "", season ? `Season ${season}` : "Other / ungrouped"));
+    const sb = el("button", "danger", "Remove season");
+    sb.onclick = () => removeIds(seasonEps.map(e => e.id)).then(() => openImpSeries(key)).catch(e => toast("Remove failed: " + e));
+    head.append(sb);
+    wrap.append(head);
+    seasonEps.sort((a, b) => (a.episode || 0) - (b.episode || 0)).forEach(ep => {
+      const row = el("div", "ep");
+      const label = ep.episode ? `E${String(ep.episode).padStart(2, "0")} — ${ep.name}` : ep.name;
+      row.append(el("span", "name", label));
+      const btn = el("button", "danger", "Remove");
+      btn.onclick = () => removeIds([ep.id]).then(() => openImpSeries(key)).catch(e => toast("Remove failed: " + e));
+      row.append(btn);
+      wrap.append(row);
+    });
+  });
+  $("#impSeriesModal").classList.remove("hidden");
+}
+$("#closeImpSeries").onclick = () => $("#impSeriesModal").classList.add("hidden");
 
 // --- Dispatcharr setup ----------------------------------------------------
 $("#dispBtn").onclick = async () => {
@@ -224,7 +291,29 @@ $("#next").onclick = () => {
   if (state.page * state.pageSize < state.total) { state.page++; loadList(); }
 };
 
+const seasonText = (seasons, eps) =>
+  seasons == null ? "…" : `${seasons} season${seasons === 1 ? "" : "s"} · ${eps} ep`;
+let seriesBadges = {};
+let listGen = 0;
+
+async function loadSeriesCounts(keys, gen) {
+  for (let i = 0; i < keys.length; i += 20) {
+    if (gen !== listGen) return;  // user navigated away
+    const chunk = keys.slice(i, i + 20);
+    try {
+      const r = await api("/api/series/counts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ series_keys: chunk }) });
+      if (gen !== listGen) return;
+      for (const [key, c] of Object.entries(r.counts)) {
+        const b = seriesBadges[key];
+        if (b) b.textContent = seasonText(c.seasons, c.episodes);
+      }
+    } catch (e) { /* leave "…" on failure */ }
+  }
+}
+
 async function loadList() {
+  const gen = ++listGen;
+  seriesBadges = {};
   const list = $("#list");
   list.innerHTML = "";
   const params = new URLSearchParams({ page: state.page, page_size: state.pageSize });
@@ -237,6 +326,8 @@ async function loadList() {
     renderPager();
     if (!r.series.length) { list.append(el("div", "empty", "No series.")); return; }
     for (const s of r.series) list.append(seriesRow(s));
+    const unknown = r.series.filter(s => s.total_seasons == null).map(s => s.series_key);
+    if (unknown.length) loadSeriesCounts(unknown, gen);
   } else {
     params.set("kind", state.tab);
     const r = await api(`/api/items?${params}`);
@@ -278,7 +369,10 @@ function seriesRow(s) {
   const row = el("div", "row");
   const name = el("span", "name");
   name.append(document.createTextNode(s.name + " "));
-  if (s.imported) name.append(el("span", "badge", "imported"));
+  const tb = el("span", "badge", seasonText(s.total_seasons, s.total_episodes));
+  if (s.total_seasons == null) seriesBadges[s.series_key] = tb;  // fill in lazily
+  name.append(tb);
+  if (s.imported) name.append(el("span", "badge imported-badge", `✓ ${s.imp_episodes} ep`));
   row.append(name);
   row.append(el("span", "grp", s.group || ""));
   const open = el("button", "", "Browse");

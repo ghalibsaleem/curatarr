@@ -334,6 +334,40 @@ def _series_episode_rows(series_key: str) -> list[dict]:
     return out
 
 
+class CountsRequest(BaseModel):
+    series_keys: list[str]
+
+
+@app.post("/api/series/counts")
+def series_counts(req: CountsRequest):
+    """Total season/episode counts for the given series. Cached in the scan
+    cache; uncached ones are fetched from the provider (concurrently, bounded)
+    and stored, so each series costs one provider call at most once."""
+    keys = list(dict.fromkeys(req.series_keys))[:60]  # de-dupe, cap per request
+    out = db.cached_series_totals(keys)
+    missing = [k for k in keys if k not in out]
+    if missing:
+        xc = _provider()
+
+        def fetch(k):
+            try:
+                info = xc.series_info(k)
+                eps = info.get("episodes") or {}
+                seasons = len(eps)
+                episodes = sum(len(v) for v in eps.values())
+                return k, seasons, episodes
+            except Exception:
+                return k, None, None
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for k, seasons, episodes in ex.map(fetch, missing):
+                if seasons is not None:
+                    db.set_series_total(k, seasons, episodes)
+                    out[k] = {"seasons": seasons, "episodes": episodes}
+    return {"counts": out}
+
+
 @app.get("/api/series/detail")
 def series_detail(series_key: str):
     rows = _series_episode_rows(series_key)

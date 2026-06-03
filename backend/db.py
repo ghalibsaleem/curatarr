@@ -105,6 +105,9 @@ class DB:
         self._ensure_column("imported", "tmdb", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("items", "provider_id", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("imported", "provider_id", "TEXT NOT NULL DEFAULT ''")
+        # Lazily-cached total season/episode counts per series (NULL = unknown).
+        self._ensure_column("items", "total_seasons", "INTEGER")
+        self._ensure_column("items", "total_episodes", "INTEGER")
 
     def _ensure_column(self, table: str, col: str, decl: str) -> None:
         cols = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
@@ -232,26 +235,49 @@ class DB:
             f"SELECT COUNT(*) n FROM items WHERE {clause}", args
         ).fetchone()["n"]
         rows = self._conn.execute(
-            f"""SELECT series_key, name, group_title FROM items WHERE {clause}
-                ORDER BY name LIMIT ? OFFSET ?""",
+            f"""SELECT series_key, name, group_title, total_seasons, total_episodes
+                FROM items WHERE {clause} ORDER BY name LIMIT ? OFFSET ?""",
             (*args, limit, offset),
         ).fetchall()
-        imported = self._imported_series_keys([r["series_key"] for r in rows])
+        counts = self._imported_series_counts([r["series_key"] for r in rows])
         out = [{
             "series_key": r["series_key"], "name": r["name"],
-            "group": r["group_title"], "imported": r["series_key"] in imported,
+            "group": r["group_title"], "imported": r["series_key"] in counts,
+            "imp_seasons": counts.get(r["series_key"], {}).get("seasons", 0),
+            "imp_episodes": counts.get(r["series_key"], {}).get("episodes", 0),
+            "total_seasons": r["total_seasons"], "total_episodes": r["total_episodes"],
         } for r in rows]
         return out, total
 
-    def _imported_series_keys(self, keys: list[str]) -> set[str]:
+    def cached_series_totals(self, keys: list[str]) -> dict[str, dict]:
         if not keys:
-            return set()
+            return {}
         marks = ",".join("?" * len(keys))
         rows = self._conn.execute(
-            f"SELECT DISTINCT series_key FROM imported "
-            f"WHERE kind='series' AND series_key IN ({marks})", keys
+            f"SELECT series_key, total_seasons, total_episodes FROM items "
+            f"WHERE kind='series' AND series_key IN ({marks}) "
+            f"AND total_seasons IS NOT NULL", keys
         ).fetchall()
-        return {r["series_key"] for r in rows}
+        return {r["series_key"]: {"seasons": r["total_seasons"], "episodes": r["total_episodes"]} for r in rows}
+
+    def set_series_total(self, series_key: str, seasons: int, episodes: int) -> None:
+        self._conn.execute(
+            "UPDATE items SET total_seasons=?, total_episodes=? "
+            "WHERE kind='series' AND series_key=?", (seasons, episodes, series_key)
+        )
+        self._conn.commit()
+
+    def _imported_series_counts(self, keys: list[str]) -> dict[str, dict]:
+        """Imported episode/season counts per series_key (only for keys present)."""
+        if not keys:
+            return {}
+        marks = ",".join("?" * len(keys))
+        rows = self._conn.execute(
+            f"SELECT series_key, COUNT(*) eps, COUNT(DISTINCT season) seasons "
+            f"FROM imported WHERE kind='series' AND series_key IN ({marks}) "
+            f"GROUP BY series_key", keys
+        ).fetchall()
+        return {r["series_key"]: {"episodes": r["eps"], "seasons": r["seasons"]} for r in rows}
 
     def series_row(self, series_key: str) -> Optional[sqlite3.Row]:
         """The scan-cache row for a series (name/group/tmdb), used to label
@@ -318,7 +344,8 @@ class DB:
 
     def imported_list(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT id,kind,name,group_title,season,episode,imported_at "
+            "SELECT id,kind,name,group_title,series_key,series_name,"
+            "season,episode,imported_at "
             "FROM imported ORDER BY imported_at DESC"
         ).fetchall()
         return [dict(r) for r in rows]

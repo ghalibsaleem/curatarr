@@ -73,9 +73,17 @@ input[type=search] {
 .row .grp { color: var(--muted); font-size: .78rem; min-width: 160px; }
 .row .badge {
   font-size: .68rem; color: var(--muted); border: 1px solid var(--line);
-  border-radius: 4px; padding: .05rem .35rem;
+  border-radius: 4px; padding: .05rem .35rem; margin-right: .3rem;
 }
+.row .imported-badge { color: #d6ffd9; border-color: var(--green); }
 .empty { color: var(--muted); padding: 2rem; text-align: center; }
+.imp-section {
+  margin: 1rem .25rem .25rem; font-size: .72rem; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); font-weight: 600;
+  border-bottom: 1px solid var(--line); padding-bottom: .3rem;
+}
+button.danger { border-color: #5a2730; color: #ff9aa6; }
+button.danger:hover { border-color: #e5484d; background: #3a1d22; }
 
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex;
   align-items: center; justify-content: center; z-index: 20; }
@@ -86,10 +94,14 @@ input[type=search] {
 }
 .modal-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: .8rem 1rem; border-bottom: 1px solid var(--line);
+  gap: .75rem; padding: .8rem 1rem; border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
 }
-.modal-head h2 { margin: 0; font-size: 1rem; }
-.modal-head > div { display: flex; gap: .5rem; }
+.modal-head h2 {
+  margin: 0; font-size: 1rem; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.modal-head > div { display: flex; gap: .5rem; flex-shrink: 0; }
 .modal-body { padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
 .modal-body label { font-size: .85rem; color: var(--muted); }
 .modal-body input[type=text] {
@@ -106,9 +118,10 @@ input[type=search] {
 #dispAccounts { display: flex; flex-direction: column; gap: .25rem; margin: .3rem 0; }
 #dispAccounts input { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: .45rem .6rem; font-size: .85rem; }
 
-#seasons { overflow: auto; padding: .5rem 1rem 1rem; }
+#seasons, #impSeasons { overflow: auto; padding: .5rem 1rem 1rem; flex: 1; min-height: 0; }
 .season-head {
-  display: flex; align-items: center; gap: .75rem; margin: .8rem 0 .3rem;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; margin: .8rem 0 .3rem;
 }
 .season-head h3 { margin: 0; font-size: .9rem; }
 .ep { display: flex; align-items: center; gap: .75rem; padding: .35rem .25rem;
