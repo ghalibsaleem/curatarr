@@ -11,6 +11,7 @@ runtime via the UI / API, so nothing is hardcoded.
 """
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import urllib.parse
@@ -24,7 +25,7 @@ from pydantic import BaseModel
 from . import xtream
 from .db import DB
 from .importer import import_rows
-from .xtream_client import ProviderXC, creds_from_source, stream_hash
+from .xtream_client import ProviderXC, creds_from_source, stream_hash, stream_url
 
 SOURCE_M3U = os.environ.get("SOURCE_M3U", "")
 DB_PATH = os.environ.get("DB_PATH", "curator.db")
@@ -55,20 +56,92 @@ if db.get_meta("xc_pass") is None:
     db.set_meta("xc_pass", os.environ.get("XC_PASS", secrets.token_hex(8)))
 
 
-def _xc_creds() -> tuple[str, str]:
-    return db.get_meta("xc_user") or "", db.get_meta("xc_pass") or ""
+# --- subscriptions (upstream) ----------------------------------------------
+def _base_user() -> str:
+    return db.get_meta("xc_user") or "curator"
+
+
+def _next_out_user(used: set[str]) -> str:
+    """Lowest free output username: curator, curator2, curator3, …"""
+    bu = _base_user()
+    i = 1
+    while True:
+        name = bu if i == 1 else f"{bu}{i}"
+        if name not in used:
+            return name
+        i += 1
+
+
+def get_subs() -> list[dict]:
+    """List of provider subscriptions [{base,user,pass,out_user}]. out_user is a
+    STABLE per-sub Xtream output username so removing one sub never renames the
+    others. Migrates a legacy single source and older subs without out_user."""
+    raw = db.get_meta("subs")
+    if raw:
+        subs = json.loads(raw)
+    else:
+        base, user, pwd = db.get_meta("src_base"), db.get_meta("src_user"), db.get_meta("src_pass")
+        subs = [{"base": base, "user": user, "pass": pwd}] if (base and user and pwd) else []
+    changed = not raw and bool(subs)
+    used = {s["out_user"] for s in subs if s.get("out_user")}
+    for s in subs:
+        if not s.get("out_user"):
+            s["out_user"] = _next_out_user(used)
+            used.add(s["out_user"])
+            changed = True
+    if changed:
+        db.set_meta("subs", json.dumps(subs))
+    return subs
+
+
+def set_subs(new_list: list[dict]) -> list[dict]:
+    """Persist subs from {base,user,pass} input, preserving each existing sub's
+    stable out_user (matched by credentials) and assigning fresh names to new
+    ones — so add/remove/reorder never disturbs other accounts."""
+    by_key = {(s["base"], s["user"], s["pass"]): s["out_user"] for s in get_subs()}
+    used = set(by_key.values())
+    result = []
+    for s in new_list:
+        key = (s["base"], s["user"], s["pass"])
+        ou = by_key.get(key)
+        if not ou or ou in {r["out_user"] for r in result}:
+            ou = _next_out_user(used | {r["out_user"] for r in result})
+        result.append({"base": s["base"], "user": s["user"], "pass": s["pass"], "out_user": ou})
+    db.set_meta("subs", json.dumps(result))
+    return result
+
+
+# --- output accounts (what Dispatcharr connects to) ------------------------
+def out_accounts() -> list[dict]:
+    """One Xtream output account per subscription, using the sub's stable
+    out_user. All share one password. Each maps to the sub whose credentials its
+    stream redirects use."""
+    pwd = db.get_meta("xc_pass") or ""
+    return [{"username": s["out_user"], "password": pwd, "sub": s} for s in get_subs()]
+
+
+def _sub_for_user(username: str) -> dict | None:
+    for a in out_accounts():
+        if a["username"] == username:
+            return a["sub"]
+    return None
 
 
 def _check_creds(username: str, password: str) -> bool:
-    u, p = _xc_creds()
-    return secrets.compare_digest(username, u) and secrets.compare_digest(password, p)
+    pwd = db.get_meta("xc_pass") or ""
+    users = {a["username"] for a in out_accounts()}
+    return username in users and secrets.compare_digest(password, pwd)
 
 
 # --- models ---------------------------------------------------------------
-class SourceRequest(BaseModel):
+class Sub(BaseModel):
     url: str
     username: str
     password: str
+
+
+class SourceRequest(BaseModel):
+    subs: list[Sub]
 
 
 class ImportRequest(BaseModel):
@@ -85,9 +158,10 @@ class UnimportRequest(BaseModel):
 # --- source + sync --------------------------------------------------------
 @app.get("/api/status")
 def status():
+    subs = get_subs()
     return {
-        "source_url": db.get_meta("src_base") or "",
-        "source_user": db.get_meta("src_user") or "",
+        "source_url": subs[0]["base"] if subs else "",
+        "sub_count": len(subs),
         "last_sync": db.get_meta("last_sync"),
         "counts": db.counts(),
     }
@@ -96,39 +170,41 @@ def status():
 @app.get("/api/source")
 def get_source():
     return {
-        "url": db.get_meta("src_base") or "",
-        "username": db.get_meta("src_user") or "",
-        "password": db.get_meta("src_pass") or "",
+        "subs": [
+            {"url": s["base"], "username": s["user"], "password": s["pass"]}
+            for s in get_subs()
+        ],
         "last_sync": db.get_meta("last_sync"),
     }
 
 
 @app.post("/api/source")
 def set_source(req: SourceRequest):
-    url = req.url.strip()
-    user = req.username.strip()
-    pwd = req.password.strip()
-    if not url.lower().startswith(("http://", "https://")):
-        raise HTTPException(400, "Server URL must start with http:// or https://")
-    if not (user and pwd):
-        raise HTTPException(400, "Username and password are required")
-    # Normalise to scheme://host[:port] (strip any pasted /get.php path or query).
-    parts = urllib.parse.urlsplit(url)
-    base = f"{parts.scheme}://{parts.netloc}"
-    db.set_meta("src_base", base)
-    db.set_meta("src_user", user)
-    db.set_meta("src_pass", pwd)
-    return {"url": base, "username": user}
+    if not req.subs:
+        raise HTTPException(400, "At least one subscription is required")
+    subs = []
+    for s in req.subs:
+        url = (s.url or "").strip()
+        user = (s.username or "").strip()
+        pwd = (s.password or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            raise HTTPException(400, "Each Server URL must start with http:// or https://")
+        if not (user and pwd):
+            raise HTTPException(400, "Each subscription needs a username and password")
+        parts = urllib.parse.urlsplit(url)
+        subs.append({"base": f"{parts.scheme}://{parts.netloc}", "user": user, "pass": pwd})
+    set_subs(subs)
+    return {"subs": [{"url": s["base"], "username": s["user"]} for s in subs]}
 
 
 def _provider() -> ProviderXC:
-    base = db.get_meta("src_base")
-    user = db.get_meta("src_user")
-    pwd = db.get_meta("src_pass")
-    if not (base and user and pwd):
-        raise HTTPException(400, "Configure the provider Server URL, username and "
-                                 "password first")
-    return ProviderXC(base, user, pwd)
+    """Provider client for ingest — reads from the primary subscription (subs[0]).
+    Both subs are the same panel, so one read covers the shared catalogue."""
+    subs = get_subs()
+    if not subs:
+        raise HTTPException(400, "Configure at least one provider subscription first")
+    s = subs[0]
+    return ProviderXC(s["base"], s["user"], s["pass"])
 
 
 @app.post("/api/sync")
@@ -152,25 +228,29 @@ def sync():
 
         rows: list[dict] = []
         for s in xc.live_streams():
-            url = xc.live_url(s.get("stream_id"))
+            pid = str(s.get("stream_id"))
+            url = xc.live_url(pid)
             rows.append({
                 "kind": "live", "name": s.get("name", ""),
                 "group_title": live_cat.get(str(s.get("category_id")), ""),
                 "tvg_logo": s.get("stream_icon") or "", "url": url,
                 "series_key": "", "series_name": "", "season": None,
-                "episode": None, "tmdb": "", "hash": stream_hash(url),
+                "episode": None, "tmdb": "", "provider_id": pid,
+                "hash": stream_hash(url),
             })
         # Movies must be fetched per category (provider returns nothing for
         # get_vod_streams without a category_id).
         for cid, cname in vod_cat.items():
             for s in xc.vod_streams(cid):
-                url = xc.movie_url(s.get("stream_id"), s.get("container_extension") or "mp4")
+                pid = str(s.get("stream_id"))
+                url = xc.movie_url(pid, s.get("container_extension") or "mp4")
                 rows.append({
                     "kind": "movie", "name": s.get("name", ""),
                     "group_title": cname, "tvg_logo": s.get("stream_icon") or "",
                     "url": url, "series_key": "", "series_name": "",
                     "season": None, "episode": None,
-                    "tmdb": str(s.get("tmdb") or ""), "hash": stream_hash(url),
+                    "tmdb": str(s.get("tmdb") or ""), "provider_id": pid,
+                    "hash": stream_hash(url),
                 })
         for s in xc.series():
             sid = str(s.get("series_id"))
@@ -180,7 +260,8 @@ def sync():
                 "tvg_logo": s.get("cover") or "", "url": "",
                 "series_key": sid, "series_name": s.get("name", ""),
                 "season": None, "episode": None,
-                "tmdb": str(s.get("tmdb") or ""), "hash": f"series:{sid}",
+                "tmdb": str(s.get("tmdb") or ""), "provider_id": "",
+                "hash": f"series:{sid}",
             })
     except HTTPException:
         raise
@@ -188,7 +269,7 @@ def sync():
         raise HTTPException(502, f"Xtream fetch failed: {e}")
 
     count = db.replace_items_rows(rows)
-    db.backfill_ledger_tmdb()  # give already-imported picks their TMDB ids
+    db.backfill_from_items()  # give existing picks their TMDB id + provider_id
     db.set_meta("last_sync", datetime.now(timezone.utc).isoformat(timespec="seconds"))
     return {"parsed": count, "counts": db.counts()}
 
@@ -248,6 +329,7 @@ def _series_episode_rows(series_key: str) -> list[dict]:
                 "url": url, "extinf": "", "series_key": series_key,
                 "series_name": name, "season": season,
                 "episode": e.get("episode_num"), "tmdb": tmdb,
+                "provider_id": eid,
             })
     return out
 
@@ -300,15 +382,20 @@ def unimport(req: UnimportRequest):
 
 @app.get("/api/xc-info")
 def xc_info(request: Request):
-    """Connection details to paste into Dispatcharr as an Xtream Codes account."""
-    user, pwd = _xc_creds()
+    """Connection details to paste into Dispatcharr — one Xtream account per
+    subscription, so Dispatcharr load-balances across them."""
     base = str(request.base_url).rstrip("/")
+    accounts = [{
+        "username": a["username"],
+        "password": a["password"],
+        "player_api": f"{base}/player_api.php?username={a['username']}&password={a['password']}",
+    } for a in out_accounts()]
     return {
         "server_url": base,
-        "username": user,
-        "password": pwd,
-        "player_api": f"{base}/player_api.php?username={user}&password={pwd}",
-        "note": "Add in Dispatcharr as an Xtream Codes account with VOD scanning ON.",
+        "accounts": accounts,
+        "note": "Add EACH account in Dispatcharr as an Xtream Codes account "
+                "(VOD scanning ON, max connections 1). Dispatcharr will balance "
+                "streams across them.",
     }
 
 
@@ -337,8 +424,19 @@ def xmltv(request: Request):
 def _stream_redirect(username: str, password: str, filename: str):
     if not _check_creds(username, password):
         raise HTTPException(403, "Forbidden")
+    sub = _sub_for_user(username)
     stream_id = filename.rsplit(".", 1)[0]
-    url = xtream.resolve_redirect(db, stream_id)
+    ref = db.led_stream_ref(stream_id)
+    if not ref:
+        raise HTTPException(404, "Unknown stream")
+    if sub and ref["provider_id"]:
+        # Rebuild against the subscription this output account maps to — this is
+        # what lets Dispatcharr load-balance the same pick across both subs.
+        url = stream_url(sub["base"], sub["user"], sub["pass"],
+                         ref["kind"], ref["provider_id"], ref["container_extension"])
+    else:
+        # Fallback for picks imported before provider_id existed.
+        url = db.led_url(int(stream_id)) if str(stream_id).isdigit() else None
     if not url:
         raise HTTPException(404, "Unknown stream")
     # Dispatcharr's VOD proxy follows this to the provider (we stay out of the

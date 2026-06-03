@@ -22,6 +22,18 @@ def stream_hash(url: str) -> str:
     return hashlib.sha1(url.encode("utf-8", "replace")).hexdigest()
 
 
+_KIND_SEG = {"movie": "movie", "series": "series", "live": "live"}
+
+
+def stream_url(base: str, username: str, password: str, kind: str,
+               provider_id: str, ext: str) -> str:
+    """Build a provider stream URL for a given subscription's credentials.
+    Lets one curated pick (identified by provider_id) be served from any sub."""
+    seg = _KIND_SEG.get(kind, "movie")
+    e = ext or ("ts" if kind == "live" else "mp4")
+    return f"{base.rstrip('/')}/{seg}/{username}/{password}/{provider_id}.{e}"
+
+
 def creds_from_source(source_url: str) -> tuple[str, str, str]:
     """Return (base_url, username, password) parsed from a get.php / player_api
     / panel URL. base_url is scheme://host[:port] with no path."""

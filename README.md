@@ -39,6 +39,14 @@ PROVIDER Xtream API ──read catalogue──▶  M3U Curator  ──serve only
 - **Streaming** = Dispatcharr rebuilds stream URLs against our server and follows
   redirects, so our `/movie|series|live/{u}/{p}/{id}.{ext}` endpoints **302 to the
   real provider URL** — the video never flows through this app.
+- **Load-balancing across subscriptions** = add multiple subs of the same
+  provider (e.g. 2 subs each capped at 1 connection = 2 screens). The catalogue
+  is synced/curated **once**; the wrapper exposes **one Xtream account per sub**
+  (`curator`, `curator2`, …, sharing one password). Each account's stream
+  redirects use that sub's credentials, so Dispatcharr — which merges content by
+  TMDB and balances across accounts — spreads concurrent streams over your subs.
+  Add every account shown in "Dispatcharr setup" (VOD scanning ON, max
+  connections 1 each).
 
 ## Run locally
 
@@ -46,10 +54,10 @@ PROVIDER Xtream API ──read catalogue──▶  M3U Curator  ──serve only
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 DB_PATH=./curator.db .venv/bin/uvicorn backend.app:app --port 8753
 # open http://localhost:8753
-#  1) "Source…"  → enter the provider Server URL, Username and Password
+#  1) "Source…"  → add one or more provider subscriptions (Server URL/Username/Password)
 #  2) "Sync"     → pulls the catalogue (~60s)
 #  3) browse Live/Movies/Series, click Import
-#  4) "Dispatcharr setup" → add the shown Xtream URL+creds in Dispatcharr (VOD scanning ON)
+#  4) "Dispatcharr setup" → add EACH shown Xtream account in Dispatcharr (VOD scanning ON)
 ```
 
 > On bleeding-edge Python (3.14) install latest wheels:
@@ -81,7 +89,7 @@ Internal (UI):
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET`  | `/api/status` | counts + saved source + last sync |
-| `GET`/`POST` | `/api/source` | view / save the source Xtream URL |
+| `GET`/`POST` | `/api/source` | view / save the provider subscriptions (`{subs:[{url,username,password}]}`) |
 | `POST` | `/api/sync` | pull provider catalogue + rebuild index |
 | `GET`  | `/api/groups?kind=live\|movie\|series` | categories w/ counts |
 | `GET`  | `/api/items?kind=live\|movie&group=&q=&page=` | paginated items |

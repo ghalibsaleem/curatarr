@@ -66,12 +66,9 @@
         <button id="closeSource">✕</button>
       </div>
       <div class="modal-body">
-        <label for="srcUrl">Server URL</label>
-        <input id="srcUrl" type="text" placeholder="http://provider.example:80" />
-        <label for="srcUser">Username</label>
-        <input id="srcUser" type="text" placeholder="username" />
-        <label for="srcPass">Password</label>
-        <input id="srcPass" type="text" placeholder="password" />
+        <p class="hint">Add one subscription per stream you want to load-balance (e.g. 2 subs = 2 screens). All must be the same provider.</p>
+        <div id="subsList"></div>
+        <button id="addSub" type="button">+ Add subscription</button>
         <p class="hint" id="sourceHint"></p>
         <div class="modal-foot">
           <button id="saveSource" class="primary">Save</button>
@@ -89,10 +86,9 @@
         <button id="closeDisp">✕</button>
       </div>
       <div class="modal-body">
-        <p class="hint">In Dispatcharr → M3U &amp; EPG Manager → add an <b>Xtream Codes</b> account with <b>VOD Scanning ON</b>, using:</p>
+        <p class="hint">In Dispatcharr → M3U &amp; EPG Manager, add an <b>Xtream Codes</b> account with <b>VOD Scanning ON</b> and <b>max connections 1</b> for <b>each</b> account below. Dispatcharr load-balances across them.</p>
         <label>Server URL</label><input id="dispUrl" type="text" readonly />
-        <label>Username</label><input id="dispUser" type="text" readonly />
-        <label>Password</label><input id="dispPass" type="text" readonly />
+        <div id="dispAccounts"></div>
         <p class="hint">Only your imported picks are exposed. Streams redirect straight to the provider — this app stays out of the video path.</p>
       </div>
     </div>

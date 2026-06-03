@@ -98,6 +98,13 @@ input[type=search] {
 }
 .modal-body .hint { color: var(--muted); font-size: .78rem; margin: .1rem 0 .3rem; }
 .modal-foot { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .4rem; }
+.subrow { display: flex; gap: .4rem; margin-bottom: .4rem; align-items: center; }
+.subrow .sub-url { flex: 2; }
+.subrow .sub-user, .subrow .sub-pass { flex: 1; min-width: 0; }
+.subrow input { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: .45rem .5rem; font-size: .82rem; }
+.subrow button { padding: .4rem .55rem; }
+#dispAccounts { display: flex; flex-direction: column; gap: .25rem; margin: .3rem 0; }
+#dispAccounts input { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: .45rem .6rem; font-size: .85rem; }
 
 #seasons { overflow: auto; padding: .5rem 1rem 1rem; }
 .season-head {

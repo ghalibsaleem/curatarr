@@ -72,21 +72,39 @@ async function runSync() {
 $("#syncBtn").onclick = runSync;
 
 // --- source settings ------------------------------------------------------
+function subRow(sub) {
+  sub = sub || {};
+  const row = el("div", "subrow");
+  const url = el("input", "sub-url"); url.type = "text"; url.placeholder = "Server URL (http://provider:80)"; url.value = sub.url || "";
+  const u = el("input", "sub-user"); u.type = "text"; u.placeholder = "username"; u.value = sub.username || "";
+  const p = el("input", "sub-pass"); p.type = "text"; p.placeholder = "password"; p.value = sub.password || "";
+  const rm = el("button", "", "✕"); rm.type = "button"; rm.title = "Remove"; rm.onclick = () => row.remove();
+  row.append(url, u, p, rm);
+  return row;
+}
 async function openSource() {
   const s = await api("/api/source");
-  $("#srcUrl").value = s.url || "";
-  $("#srcUser").value = s.username || "";
-  $("#srcPass").value = s.password || "";
+  const list = $("#subsList");
+  list.innerHTML = "";
+  const subs = (s.subs && s.subs.length) ? s.subs : [{}];
+  subs.forEach(sub => list.append(subRow(sub)));
   $("#sourceHint").textContent = s.last_sync ? `Last synced ${fmtTime(s.last_sync)}` : "Not synced yet.";
   $("#sourceModal").classList.remove("hidden");
-  $("#srcUrl").focus();
+}
+$("#addSub").onclick = () => $("#subsList").append(subRow());
+function collectSubs() {
+  return [...$("#subsList").querySelectorAll(".subrow")].map(r => ({
+    url: r.querySelector(".sub-url").value.trim(),
+    username: r.querySelector(".sub-user").value.trim(),
+    password: r.querySelector(".sub-pass").value.trim(),
+  })).filter(s => s.url || s.username || s.password);
 }
 async function saveSource() {
-  const url = $("#srcUrl").value.trim();
-  const username = $("#srcUser").value.trim();
-  const password = $("#srcPass").value.trim();
-  if (!url || !username || !password) { toast("Enter server URL, username and password"); return false; }
-  await api("/api/source", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, username, password }) });
+  const subs = collectSubs();
+  if (!subs.length || subs.some(s => !s.url || !s.username || !s.password)) {
+    toast("Each subscription needs URL, username and password"); return false;
+  }
+  await api("/api/source", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subs }) });
   await refreshStatus();
   return true;
 }
@@ -155,8 +173,15 @@ $("#dispBtn").onclick = async () => {
   try {
     const s = await api("/api/xc-info");
     $("#dispUrl").value = s.server_url;
-    $("#dispUser").value = s.username;
-    $("#dispPass").value = s.password;
+    const wrap = $("#dispAccounts");
+    wrap.innerHTML = "";
+    s.accounts.forEach((a, i) => {
+      const head = el("label", "", `Account ${i + 1} (${i === 0 ? "screen 1" : "screen " + (i + 1)})`);
+      wrap.append(head);
+      const rowU = el("input"); rowU.type = "text"; rowU.readOnly = true; rowU.value = `username: ${a.username}`;
+      const rowP = el("input"); rowP.type = "text"; rowP.readOnly = true; rowP.value = `password: ${a.password}`;
+      wrap.append(rowU, rowP);
+    });
     $("#dispModal").classList.remove("hidden");
   } catch (e) { toast("Failed: " + e); }
 };
