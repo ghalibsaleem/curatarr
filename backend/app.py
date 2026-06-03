@@ -31,7 +31,7 @@ SOURCE_M3U = os.environ.get("SOURCE_M3U", "")
 DB_PATH = os.environ.get("DB_PATH", "curator.db")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
-app = FastAPI(title="M3U Curator")
+app = FastAPI(title="Curatarr")
 db = DB(DB_PATH)
 
 # Provider source is stored as discrete fields (src_base/src_user/src_pass).

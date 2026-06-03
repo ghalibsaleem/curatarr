@@ -1,7 +1,7 @@
 services:
-  m3u-curator:
+  curatarr:
     build: .
-    container_name: m3u-curator
+    container_name: curatarr
     ports:
       - "8753:8000"
     environment:

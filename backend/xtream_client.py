@@ -58,7 +58,7 @@ class ProviderXC:
             params["action"] = action
         params.update({k: v for k, v in extra.items() if v is not None})
         url = f"{self.base}/player_api.php?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={"User-Agent": "m3u-curator/1"})
+        req = urllib.request.Request(url, headers={"User-Agent": "curatarr/1"})
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             data = resp.read()
         return json.loads(data.decode("utf-8", "replace"))

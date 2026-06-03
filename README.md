@@ -1,4 +1,4 @@
-# M3U Curator
+# Curatarr
 
 A curation front-end for huge IPTV/VOD providers. It reads a provider's **Xtream
 Codes** catalogue (live + movies + series), lets you browse it Jellyseerr-style
@@ -20,7 +20,7 @@ Xtream scan sequence (auth, categories, vod/series streams, season-keyed
 ## How it works
 
 ```
-PROVIDER Xtream API ──read catalogue──▶  M3U Curator  ──serve only PICKS──▶  Dispatcharr (XC account, VOD on)
+PROVIDER Xtream API ──read catalogue──▶  Curatarr  ──serve only PICKS──▶  Dispatcharr (XC account, VOD on)
  (get.php creds)         browse + cherry-pick           player_api.php             │  native VOD + VOD2MLIB
                               │ import → ledger (SQLite)                            ▼
                               └───────── stream open ──── 302 redirect ────▶ provider (bytes flow direct)
