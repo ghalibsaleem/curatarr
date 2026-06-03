@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>M3U Curator</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>M3U Curator</h1>
+    <div class="tabs">
+      <button data-tab="live" class="tab active">Live</button>
+      <button data-tab="movie" class="tab">Movies</button>
+      <button data-tab="series" class="tab">Series</button>
+    </div>
+    <div class="actions">
+      <button id="sourceBtn" title="Set or change the source M3U URL">Source…</button>
+      <button id="syncBtn" class="primary" title="Download fresh data from the saved URL">Sync</button>
+      <span id="status" class="status"></span>
+    </div>
+  </header>
+
+  <main>
+    <aside id="sidebar">
+      <input id="groupFilter" type="search" placeholder="Filter categories…" />
+      <ul id="groups"></ul>
+    </aside>
+
+    <section id="content">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search names…" />
+        <span id="resultMeta" class="meta"></span>
+        <span class="spacer"></span>
+        <div class="pager">
+          <button id="prev">‹ Prev</button>
+          <span id="pageInfo"></span>
+          <button id="next">Next ›</button>
+        </div>
+      </div>
+      <div id="list"></div>
+    </section>
+  </main>
+
+  <!-- Series drill-down -->
+  <div id="seriesModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2 id="seriesTitle"></h2>
+        <div>
+          <button id="importWholeSeries" class="primary">Import whole series</button>
+          <button id="closeSeries">✕</button>
+        </div>
+      </div>
+      <div id="seasons"></div>
+    </div>
+  </div>
+
+  <!-- Source settings -->
+  <div id="sourceModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>Source M3U</h2>
+        <button id="closeSource">✕</button>
+      </div>
+      <div class="modal-body">
+        <label for="sourceUrl">M3U URL (or local file path)</label>
+        <input id="sourceUrl" type="text" placeholder="http://provider.example/get.php?username=…&type=m3u_plus" />
+        <p class="hint" id="sourceHint"></p>
+        <div class="modal-foot">
+          <button id="saveSource" class="primary">Save</button>
+          <button id="saveSyncSource">Save &amp; Sync</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

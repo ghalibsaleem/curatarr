@@ -1,0 +1,21 @@
+services:
+  m3u-curator:
+    build: .
+    container_name: m3u-curator
+    ports:
+      - "8753:8000"
+    environment:
+      # The source M3U URL is set/changed in the UI ("Source…") and saved in the
+      # DB — no need to hardcode it. Optionally seed it once with SOURCE_M3U.
+      # SOURCE_M3U: http://provider.example/get.php?username=...&type=m3u_plus
+      SOURCE_CACHE: /data/source_cache.m3u
+      DEST_M3U: /curated/curated.m3u
+      DB_PATH: /data/curator.db
+    volumes:
+      # Downloaded-M3U cache + SQLite DB live here.
+      - ./data:/data
+      # Curated output — mount Dispatcharr's /data/m3us here so the picked
+      # subset is auto-imported. Example for the TrueNAS dataset:
+      #   /mnt/AppsStorage-1/Dispatcharr/Data/m3us:/curated
+      - ./curated:/curated
+    restart: unless-stopped

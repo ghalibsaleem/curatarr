@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Runtime/working data — holds the downloaded M3U (provider credentials),
+# SQLite DB, curated output, and the local test server. Never commit.
+rundata/
+testdata/
+data/
+curated/
+*.db
+*.m3u
+*.m3u8
+*.part
+*.pid
