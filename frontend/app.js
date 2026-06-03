@@ -251,8 +251,7 @@ function seriesRow(s) {
   const row = el("div", "row");
   const name = el("span", "name");
   name.append(document.createTextNode(s.name + " "));
-  const b = el("span", "badge", `${s.seasons} season${s.seasons === 1 ? "" : "s"} · ${s.episodes} ep`);
-  name.append(b);
+  if (s.imported) name.append(el("span", "badge", "imported"));
   row.append(name);
   row.append(el("span", "grp", s.group || ""));
   const open = el("button", "", "Browse");
@@ -302,7 +301,7 @@ async function openSeries(s) {
         btn.onclick = async () => {
           btn.disabled = true;
           try {
-            await api("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [ep.id] }) });
+            await api("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ series_key: s.series_key, episode_ids: [ep.ep_id] }) });
             btn.className = "imported"; btn.textContent = "Imported ✓"; refreshStatus();
           } catch (e) { toast("Import failed: " + e); btn.disabled = false; }
         };

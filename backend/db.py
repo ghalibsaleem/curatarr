@@ -8,12 +8,9 @@ re-scans and can be served/rebuilt without the source being present.
 """
 from __future__ import annotations
 
-import os
 import sqlite3
 from typing import Iterable, Optional
 from urllib.parse import urlsplit
-
-from .parser import Entry
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
@@ -101,16 +98,30 @@ class DB:
             self._conn.executescript(IMPORTED_DDL)
 
     # --- scan -------------------------------------------------------------
-    def replace_items(self, entries: Iterable[Entry]) -> int:
+    @staticmethod
+    def _insert_batch(cur, batch):
+        cur.executemany(
+            """INSERT INTO items
+               (kind,name,group_title,tvg_id,tvg_logo,url,extinf,
+                series_key,series_name,season,episode,hash)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            batch,
+        )
+
+    def replace_items_rows(self, rows: Iterable[dict]) -> int:
+        """Rebuild the scan cache from Xtream-derived dict rows. Each dict has
+        kind/name/group_title/tvg_logo/url/series_key/series_name/season/episode/hash.
+        For series there is one row per series (episodes are fetched lazily)."""
         cur = self._conn.cursor()
         cur.execute("DELETE FROM items")
         count = 0
         batch: list[tuple] = []
-        for e in entries:
+        for r in rows:
             batch.append((
-                e.kind, e.name, e.group_title, e.tvg_id, e.tvg_logo,
-                e.url, e.extinf, e.series_key, e.series_name,
-                e.season, e.episode, e.hash,
+                r["kind"], r["name"], r.get("group_title", ""), "",
+                r.get("tvg_logo", ""), r.get("url", ""), "",
+                r.get("series_key", ""), r.get("series_name", ""),
+                r.get("season"), r.get("episode"), r["hash"],
             ))
             if len(batch) >= 5000:
                 self._insert_batch(cur, batch)
@@ -122,16 +133,6 @@ class DB:
         self._conn.commit()
         self.set_meta("item_count", str(count))
         return count
-
-    @staticmethod
-    def _insert_batch(cur, batch):
-        cur.executemany(
-            """INSERT INTO items
-               (kind,name,group_title,tvg_id,tvg_logo,url,extinf,
-                series_key,series_name,season,episode,hash)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            batch,
-        )
 
     # --- meta -------------------------------------------------------------
     def set_meta(self, key: str, value: str) -> None:
@@ -202,57 +203,48 @@ class DB:
 
     def series_list(self, group: Optional[str], q: Optional[str],
                     limit: int, offset: int) -> tuple[list[dict], int]:
+        # One row per series in the scan cache (episodes are fetched lazily).
         where = ["kind='series'"]
         args: list = []
         if group:
             where.append("group_title=?")
             args.append(group)
         if q:
-            where.append("series_name LIKE ?")
+            where.append("name LIKE ?")
             args.append(f"%{q}%")
         clause = " AND ".join(where)
         total = self._conn.execute(
-            f"""SELECT COUNT(*) n FROM (
-                    SELECT series_key FROM items WHERE {clause}
-                    GROUP BY series_key)""",
-            args,
+            f"SELECT COUNT(*) n FROM items WHERE {clause}", args
         ).fetchone()["n"]
         rows = self._conn.execute(
-            f"""SELECT series_key, MIN(series_name) name, MIN(group_title) grp,
-                       COUNT(*) episodes, COUNT(DISTINCT season) seasons
-                FROM items WHERE {clause}
-                GROUP BY series_key ORDER BY name LIMIT ? OFFSET ?""",
+            f"""SELECT series_key, name, group_title FROM items WHERE {clause}
+                ORDER BY name LIMIT ? OFFSET ?""",
             (*args, limit, offset),
         ).fetchall()
+        imported = self._imported_series_keys([r["series_key"] for r in rows])
         out = [{
-            "series_key": r["series_key"], "name": r["name"], "group": r["grp"],
-            "episodes": r["episodes"], "seasons": r["seasons"],
+            "series_key": r["series_key"], "name": r["name"],
+            "group": r["group_title"], "imported": r["series_key"] in imported,
         } for r in rows]
         return out, total
 
-    def series_detail(self, series_key: str) -> dict:
+    def _imported_series_keys(self, keys: list[str]) -> set[str]:
+        if not keys:
+            return set()
+        marks = ",".join("?" * len(keys))
         rows = self._conn.execute(
-            """SELECT id,name,season,episode,hash FROM items
-               WHERE kind='series' AND series_key=?
-               ORDER BY season, episode, name""",
-            (series_key,),
+            f"SELECT DISTINCT series_key FROM imported "
+            f"WHERE kind='series' AND series_key IN ({marks})", keys
         ).fetchall()
-        imported = self._imported_set([r["hash"] for r in rows])
-        seasons: dict[int, list] = {}
-        for r in rows:
-            s = r["season"] if r["season"] is not None else 0
-            seasons.setdefault(s, []).append({
-                "id": r["id"], "name": r["name"],
-                "season": r["season"], "episode": r["episode"],
-                "imported": r["hash"] in imported,
-            })
-        return {
-            "series_key": series_key,
-            "seasons": [
-                {"season": s, "episodes": eps}
-                for s, eps in sorted(seasons.items())
-            ],
-        }
+        return {r["series_key"] for r in rows}
+
+    def series_row(self, series_key: str) -> Optional[sqlite3.Row]:
+        """The scan-cache row for a series (name/group), used to label episodes
+        fetched lazily from the provider."""
+        return self._conn.execute(
+            "SELECT name, group_title FROM items "
+            "WHERE kind='series' AND series_key=? LIMIT 1", (series_key,)
+        ).fetchone()
 
     _PICK_COLS = ("id,kind,name,group_title,url,extinf,series_key,series_name,"
                   "season,episode,hash")
@@ -263,19 +255,6 @@ class DB:
         marks = ",".join("?" * len(ids))
         return self._conn.execute(
             f"SELECT {self._PICK_COLS} FROM items WHERE id IN ({marks})", ids,
-        ).fetchall()
-
-    def rows_for_series(self, series_key: str, season: Optional[int]) -> list[sqlite3.Row]:
-        if season is None:
-            return self._conn.execute(
-                f"SELECT {self._PICK_COLS} FROM items "
-                "WHERE kind='series' AND series_key=? ORDER BY season,episode",
-                (series_key,),
-            ).fetchall()
-        return self._conn.execute(
-            f"SELECT {self._PICK_COLS} FROM items "
-            "WHERE kind='series' AND series_key=? AND season=? ORDER BY episode",
-            (series_key, season),
         ).fetchall()
 
     # --- imported ledger (curated selection) -----------------------------

@@ -1,55 +1,60 @@
 # M3U Curator
 
-A curation front-end for huge IPTV/VOD M3Us. Parse a massive provider dump
-(hundreds of thousands of entries), browse it Jellyseerr-style by **Live /
-Movies / Series → Season → Episode**, search, and **click Import** to copy the
-hand-picked entries — `#EXTINF` + URL, byte-for-byte — into a lean curated
-`.m3u` that Dispatcharr consumes.
+A curation front-end for huge IPTV/VOD providers. It reads a provider's **Xtream
+Codes** catalogue (live + movies + series), lets you browse it Jellyseerr-style
+and **cherry-pick** individual channels, movies, seasons or episodes, then
+re-serves *only your picks* as a **curated Xtream Codes panel** that Dispatcharr
+ingests as an account.
 
-Verified against a real 105 MB / 381,740-entry provider M3U: full parse + index
-in ~3.8 s; classification, series grouping, and idempotent import all confirmed.
+This solves a gap Dispatcharr can't: it has **no per-series VOD cherry-pick**
+(only account-level VOD on/off + categories), and only treats **Xtream**
+accounts as VOD. By acting as a curated Xtream panel in front of the provider,
+this app gives Dispatcharr native VOD metadata + VOD2MLIB support for exactly the
+titles you chose.
+
+Verified against a real provider: ~81k catalogue items (25k live, 44k movies,
+11.5k series) indexed in ~60s; lazy per-series episode fetch; the full Dispatcharr
+Xtream scan sequence (auth, categories, vod/series streams, season-keyed
+`get_series_info`) and 302 stream redirects.
 
 ## How it works
 
 ```
-saved source URL  ──Sync (download)──▶  SQLite (items cache + import ledger)  ──serve──▶  web UI
-   (editable in UI)                                                                          │ click Import
-                                                                                            ▼
-                                                        curated .m3u  ◀──append (verbatim, deduped)
-                                                             │
-                                                             ▼
-                                                  Dispatcharr /data/m3us  (auto-import)
+PROVIDER Xtream API ──read catalogue──▶  M3U Curator  ──serve only PICKS──▶  Dispatcharr (XC account, VOD on)
+ (get.php creds)         browse + cherry-pick           player_api.php             │  native VOD + VOD2MLIB
+                              │ import → ledger (SQLite)                            ▼
+                              └───────── stream open ──── 302 redirect ────▶ provider (bytes flow direct)
 ```
 
-The source M3U URL is saved in the app (SQLite `meta`) and editable at runtime
-via **Source…**. Hitting **Sync** re-downloads fresh data from that URL
-(streamed to a cache file, constant memory) and rebuilds the index. A local file
-path works too. Credentials in the URL are masked in any error/log output.
-
-- **Classification** is driven by the URL path segment (`/series/`, `/movie/`,
-  else live), with an `SxxExx` title fallback for flat providers. Group-title
-  keywords are deliberately *not* trusted for type — live channels are commonly
-  filed under groups named "TV SHOWS"/"SERIES".
-- **Series grouping** strips the episode token (`S01 E02`, `1x02`,
-  `Season 1 Episode 2`) to a clean title and keys on `(group, title)` so numbered
-  or identically-named shows from different categories never merge.
-- **Import is idempotent**: each entry is tracked by a content hash of its
-  `#EXTINF`+URL, so re-importing is a no-op and the curated file never dupes.
-  The ledger survives re-scans.
+- **Input** = the provider's `player_api.php`. Credentials/base URL are parsed
+  from the saved source URL (a `get.php?...&username=...&password=...` link), so
+  there's nothing extra to configure. Movies are fetched per-category (the
+  provider returns nothing for `get_vod_streams` without a category); **episodes
+  are fetched lazily** when you open or import a series (avoids ~11k calls).
+- **Curation** = the SQLite **ledger** is the single source of truth for your
+  picks (idempotent by a stream-URL hash).
+- **Output** = a curated Xtream panel (`player_api.php`) exposing only the
+  ledger. Verified against Dispatcharr v0.25.1 source: `get_series_info` returns
+  the **season-keyed `episodes` object** Dispatcharr expects.
+- **Streaming** = Dispatcharr rebuilds stream URLs against our server and follows
+  redirects, so our `/movie|series|live/{u}/{p}/{id}.{ext}` endpoints **302 to the
+  real provider URL** — the video never flows through this app.
 
 ## Run locally
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-DEST_M3U=./curated.m3u DB_PATH=./curator.db \
-  .venv/bin/uvicorn backend.app:app --port 8753
-# open http://localhost:8753 → "Source…" to paste your M3U URL → "Sync" → browse & import
-# (optional) seed the URL up front with SOURCE_M3U=http://provider/get.php?...
+DB_PATH=./curator.db .venv/bin/uvicorn backend.app:app --port 8753
+# open http://localhost:8753
+#  1) "Source…"  → paste your provider get.php URL (with username & password)
+#  2) "Sync"     → pulls the catalogue (~60s)
+#  3) browse Live/Movies/Series, click Import
+#  4) "Dispatcharr setup" → add the shown Xtream URL+creds in Dispatcharr (VOD scanning ON)
 ```
 
-> Note: needs prebuilt wheels for FastAPI/pydantic. On bleeding-edge Python
-> (3.14) install latest (`pip install -U fastapi pydantic 'uvicorn[standard]'`);
-> the Docker image pins Python 3.12 where the requirements install cleanly.
+> On bleeding-edge Python (3.14) install latest wheels:
+> `pip install -U fastapi pydantic 'uvicorn[standard]'`. The Docker image pins
+> Python 3.12 where `requirements.txt` installs cleanly.
 
 ## Run with Docker
 
@@ -57,41 +62,42 @@ DEST_M3U=./curated.m3u DB_PATH=./curator.db \
 docker compose up --build -d   # serves on :8753
 ```
 
-Mount the curated output at Dispatcharr's M3U folder so picks auto-import — e.g.
-in `docker-compose.yml` set the second volume to:
-
-```yaml
-- /mnt/AppsStorage-1/Dispatcharr/Data/m3us:/curated
-```
-
-Then in Dispatcharr add `curated.m3u` as an M3U Account (or enable
-"Auto-Import Mapped Files").
+Then add this app to Dispatcharr as an **Xtream Codes** account (M3U & EPG
+Manager), using the Server URL / username / password from **Dispatcharr setup**,
+with **Enable VOD Scanning ON**.
 
 ## Config (environment)
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `SOURCE_M3U` | _(empty)_ | Optional initial source URL/path, seeded on first run only; thereafter edited in the UI |
-| `SOURCE_CACHE` | `source_cache.m3u` | Where a downloaded M3U is cached |
-| `DEST_M3U` | `curated.m3u` | Curated output Dispatcharr reads |
-| `DB_PATH` | `curator.db` | SQLite cache + import ledger |
+| `SOURCE_M3U` | _(empty)_ | Optional initial source Xtream URL, seeded on first run; thereafter edited in the UI |
+| `DB_PATH` | `curator.db` | SQLite scan cache + curated ledger |
+| `XC_USER` / `XC_PASS` | `curator` / random | Credentials Dispatcharr uses to consume the wrapper (generated once if unset) |
 
 ## API
+
+Internal (UI):
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET`  | `/api/status` | counts + saved source + last sync |
-| `GET`  | `/api/source` | current saved source URL + sync info |
-| `POST` | `/api/source` | save/update source (`{"url": "..."}`) |
-| `POST` | `/api/sync` | download from saved URL + rebuild index |
+| `GET`/`POST` | `/api/source` | view / save the source Xtream URL |
+| `POST` | `/api/sync` | pull provider catalogue + rebuild index |
 | `GET`  | `/api/groups?kind=live\|movie\|series` | categories w/ counts |
 | `GET`  | `/api/items?kind=live\|movie&group=&q=&page=` | paginated items |
-| `GET`  | `/api/series?group=&q=&page=` | paginated series |
-| `GET`  | `/api/series/detail?series_key=` | seasons + episodes |
-| `POST` | `/api/import` | `{"ids":[..]}` or `{"series_key":"..","season":N?}` |
-| `GET`  | `/api/imported` | the import ledger |
+| `GET`  | `/api/series?group=&q=&page=` | paginated series (one row each) |
+| `GET`  | `/api/series/detail?series_key=` | seasons + episodes (lazy from provider) |
+| `POST` | `/api/import` | `{ids:[…]}` or `{series_key, season?, episode_ids?}` |
+| `POST` | `/api/unimport` | `{ids:[…]}` (ledger row ids) |
+| `GET`  | `/api/imported` | the curated ledger |
+| `GET`  | `/api/xc-info` | Xtream URL + credentials to paste into Dispatcharr |
+
+Public (consumed by Dispatcharr): `GET /player_api.php` (Xtream actions),
+`GET /xmltv.php` (empty EPG), and stream redirects
+`GET /movie|series|live/{user}/{password}/{id}.{ext}`.
 
 ## Not in v1
 
-Xtream Codes API input, `.strm`/NFO emission for media servers, multi-provider
-merge/dedup, EPG. The schema and classifier already leave room for these.
+- TMDB/cover passthrough to Dispatcharr (it still enriches by name/year).
+- "New since last sync" diff view; scheduled auto-sync.
+- Multi-provider merge.

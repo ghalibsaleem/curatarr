@@ -1,11 +1,10 @@
-"""FastAPI app: sync a big M3U from a saved URL, browse it Jellyseerr-style,
-import picks into a curated M3U.
+"""FastAPI app: read a provider's Xtream catalogue, browse it Jellyseerr-style,
+cherry-pick, and re-serve the picks as a curated Xtream panel for Dispatcharr.
 
 Config via environment (all optional):
-  SOURCE_M3U    initial source (URL or local path) seeded on first run
-  SOURCE_CACHE  where a downloaded M3U is cached (default ./source_cache.m3u)
-  DEST_M3U      curated output M3U (default ./curated.m3u)
+  SOURCE_M3U    initial source Xtream URL (get.php/player_api) seeded on first run
   DB_PATH       SQLite cache + import ledger (default ./curator.db)
+  XC_USER/XC_PASS  credentials for our Xtream wrapper (generated if unset)
 
 The active source URL is stored in the DB (meta.source_url) and editable at
 runtime via the UI / API, so nothing is hardcoded.
@@ -13,11 +12,7 @@ runtime via the UI / API, so nothing is hardcoded.
 from __future__ import annotations
 
 import os
-import re
 import secrets
-import shutil
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -25,12 +20,12 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import parser, xtream
+from . import xtream
 from .db import DB
 from .importer import import_rows
+from .xtream_client import ProviderXC, creds_from_source, stream_hash
 
 SOURCE_M3U = os.environ.get("SOURCE_M3U", "")
-SOURCE_CACHE = os.environ.get("SOURCE_CACHE", "source_cache.m3u")
 DB_PATH = os.environ.get("DB_PATH", "curator.db")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
@@ -58,47 +53,16 @@ def _check_creds(username: str, password: str) -> bool:
     return secrets.compare_digest(username, u) and secrets.compare_digest(password, p)
 
 
-# --- helpers --------------------------------------------------------------
-def _is_remote(src: str) -> bool:
-    return src.lower().startswith(("http://", "https://"))
-
-
-def redact(src: str) -> str:
-    """Mask credentials for safe logging/echo: both user:pass@host and
-    Xtream-style ?username=…&password=… query params."""
-    if not src:
-        return src
-    src = re.sub(r"://[^/@]+@", "://***@", src)
-    src = re.sub(r"(?i)\b(username|password|user|pass|token)=[^&\s]+", r"\1=***", src)
-    return src
-
-
-def _download(url: str, dest: str) -> int:
-    """Stream a URL to dest (constant memory). Returns byte size. Error messages
-    are redacted so provider credentials never surface in responses or logs."""
-    os.makedirs(os.path.dirname(os.path.abspath(dest)) or ".", exist_ok=True)
-    req = urllib.request.Request(url, headers={"User-Agent": "m3u-curator/1"})
-    tmp = dest + ".part"
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as out:
-            shutil.copyfileobj(resp, out, length=256 * 1024)
-    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        raise HTTPException(502, f"Download failed: {redact(str(e))}")
-    os.replace(tmp, dest)
-    return os.path.getsize(dest)
-
-
 # --- models ---------------------------------------------------------------
 class SourceRequest(BaseModel):
     url: str
 
 
 class ImportRequest(BaseModel):
-    ids: list[int] | None = None
-    series_key: str | None = None
-    season: int | None = None  # only with series_key; None = whole series
+    ids: list[int] | None = None              # live/movie scan-cache ids
+    series_key: str | None = None             # provider series id
+    season: int | None = None                 # with series_key: just this season
+    episode_ids: list[str] | None = None      # with series_key: specific episodes
 
 
 class UnimportRequest(BaseModel):
@@ -111,7 +75,6 @@ def status():
     return {
         "source_url": db.get_meta("source_url") or "",
         "last_sync": db.get_meta("last_sync"),
-        "last_bytes": db.get_meta("last_bytes"),
         "counts": db.counts(),
     }
 
@@ -121,7 +84,6 @@ def get_source():
     return {
         "url": db.get_meta("source_url") or "",
         "last_sync": db.get_meta("last_sync"),
-        "last_bytes": db.get_meta("last_bytes"),
     }
 
 
@@ -130,33 +92,84 @@ def set_source(req: SourceRequest):
     url = req.url.strip()
     if not url:
         raise HTTPException(400, "URL is required")
-    if not (_is_remote(url) or os.path.exists(url)):
-        raise HTTPException(400, "Must be an http(s):// URL or an existing local path")
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(400, "Must be an http(s):// Xtream URL")
+    base, user, pwd = creds_from_source(url)
+    if not (user and pwd):
+        raise HTTPException(400, "URL must include username & password "
+                                 "(e.g. .../get.php?username=…&password=…&type=m3u_plus)")
     db.set_meta("source_url", url)
     return {"url": url}
 
 
-@app.post("/api/sync")
-def sync():
-    """Fetch fresh data from the saved source and rebuild the index."""
+def _provider() -> ProviderXC:
     src = db.get_meta("source_url")
     if not src:
         raise HTTPException(400, "No source configured — set a URL first")
+    base, user, pwd = creds_from_source(src)
+    if not (base and user and pwd):
+        raise HTTPException(400, "Source must be an Xtream URL with username & password "
+                                 "(e.g. .../get.php?username=…&password=…)")
+    return ProviderXC(base, user, pwd)
 
-    if _is_remote(src):
-        size = _download(src, SOURCE_CACHE)
-        path = SOURCE_CACHE
-    else:
-        if not os.path.exists(src):
-            raise HTTPException(404, f"Source not found: {src}")
-        path = src
-        size = os.path.getsize(src)
 
-    count = db.replace_items(parser.parse(path))
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    db.set_meta("last_sync", now)
-    db.set_meta("last_bytes", str(size))
-    return {"parsed": count, "bytes": size, "counts": db.counts()}
+@app.post("/api/sync")
+def sync():
+    """Pull categories/movies/series from the provider's Xtream API and rebuild
+    the browse index. Episodes are fetched lazily (on open/import), so series
+    contribute one row each here rather than thousands of episodes."""
+    xc = _provider()
+    try:
+        xc.authenticate()
+    except Exception as e:
+        raise HTTPException(502, f"Xtream auth failed: {e}")
+
+    def catmap(cats):
+        return {str(c.get("category_id")): c.get("category_name", "") for c in cats}
+
+    try:
+        live_cat = catmap(xc.live_categories())
+        vod_cat = catmap(xc.vod_categories())
+        ser_cat = catmap(xc.series_categories())
+
+        rows: list[dict] = []
+        for s in xc.live_streams():
+            url = xc.live_url(s.get("stream_id"))
+            rows.append({
+                "kind": "live", "name": s.get("name", ""),
+                "group_title": live_cat.get(str(s.get("category_id")), ""),
+                "tvg_logo": s.get("stream_icon") or "", "url": url,
+                "series_key": "", "series_name": "", "season": None,
+                "episode": None, "hash": stream_hash(url),
+            })
+        # Movies must be fetched per category (provider returns nothing for
+        # get_vod_streams without a category_id).
+        for cid, cname in vod_cat.items():
+            for s in xc.vod_streams(cid):
+                url = xc.movie_url(s.get("stream_id"), s.get("container_extension") or "mp4")
+                rows.append({
+                    "kind": "movie", "name": s.get("name", ""),
+                    "group_title": cname, "tvg_logo": s.get("stream_icon") or "",
+                    "url": url, "series_key": "", "series_name": "",
+                    "season": None, "episode": None, "hash": stream_hash(url),
+                })
+        for s in xc.series():
+            sid = str(s.get("series_id"))
+            rows.append({
+                "kind": "series", "name": s.get("name", ""),
+                "group_title": ser_cat.get(str(s.get("category_id")), ""),
+                "tvg_logo": s.get("cover") or "", "url": "",
+                "series_key": sid, "series_name": s.get("name", ""),
+                "season": None, "episode": None, "hash": f"series:{sid}",
+            })
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Xtream fetch failed: {e}")
+
+    count = db.replace_items_rows(rows)
+    db.set_meta("last_sync", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    return {"parsed": count, "counts": db.counts()}
 
 
 # --- browse ---------------------------------------------------------------
@@ -190,16 +203,59 @@ def series(
     return {"series": rows, "total": total, "page": page, "page_size": page_size}
 
 
+def _series_episode_rows(series_key: str) -> list[dict]:
+    """Fetch a series' episodes from the provider (lazy) as ledger-shaped dicts.
+    Each row carries a stable hash, the provider stream URL, and season/episode."""
+    xc = _provider()
+    meta = db.series_row(series_key)
+    name = meta["name"] if meta else ""
+    group = meta["group_title"] if meta else ""
+    try:
+        info = xc.series_info(series_key)
+    except Exception as e:
+        raise HTTPException(502, f"Xtream series fetch failed: {e}")
+    out: list[dict] = []
+    for snum, eps in (info.get("episodes") or {}).items():
+        season = int(snum) if str(snum).isdigit() else 0
+        for e in eps:
+            eid = str(e.get("id"))
+            url = xc.episode_url(eid, e.get("container_extension") or "mp4")
+            out.append({
+                "ep_id": eid, "hash": stream_hash(url), "kind": "series",
+                "name": e.get("title") or name, "group_title": group,
+                "url": url, "extinf": "", "series_key": series_key,
+                "series_name": name, "season": season,
+                "episode": e.get("episode_num"),
+            })
+    return out
+
+
 @app.get("/api/series/detail")
 def series_detail(series_key: str):
-    return db.series_detail(series_key)
+    rows = _series_episode_rows(series_key)
+    imported = db.is_imported(r["hash"] for r in rows)
+    seasons: dict[int, list] = {}
+    for r in rows:
+        seasons.setdefault(r["season"], []).append({
+            "ep_id": r["ep_id"], "name": r["name"], "season": r["season"],
+            "episode": r["episode"], "imported": r["hash"] in imported,
+        })
+    return {
+        "series_key": series_key,
+        "seasons": [{"season": s, "episodes": eps} for s, eps in sorted(seasons.items())],
+    }
 
 
 # --- import ---------------------------------------------------------------
 @app.post("/api/import")
 def do_import(req: ImportRequest):
     if req.series_key:
-        rows = db.rows_for_series(req.series_key, req.season)
+        rows = _series_episode_rows(req.series_key)
+        if req.season is not None:
+            rows = [r for r in rows if r["season"] == req.season]
+        if req.episode_ids:
+            wanted = set(map(str, req.episode_ids))
+            rows = [r for r in rows if r["ep_id"] in wanted]
     elif req.ids:
         rows = db.rows_for_ids(req.ids)
     else:
