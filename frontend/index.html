@@ -66,8 +66,12 @@
         <button id="closeSource">✕</button>
       </div>
       <div class="modal-body">
-        <label for="sourceUrl">Provider Xtream URL (with username &amp; password)</label>
-        <input id="sourceUrl" type="text" placeholder="http://provider.example/get.php?username=…&password=…&type=m3u_plus" />
+        <label for="srcUrl">Server URL</label>
+        <input id="srcUrl" type="text" placeholder="http://provider.example:80" />
+        <label for="srcUser">Username</label>
+        <input id="srcUser" type="text" placeholder="username" />
+        <label for="srcPass">Password</label>
+        <input id="srcPass" type="text" placeholder="password" />
         <p class="hint" id="sourceHint"></p>
         <div class="modal-foot">
           <button id="saveSource" class="primary">Save</button>

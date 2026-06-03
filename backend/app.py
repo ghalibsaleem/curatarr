@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import urllib.parse
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -32,9 +33,19 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 app = FastAPI(title="M3U Curator")
 db = DB(DB_PATH)
 
-# Seed the saved source from the env default on first run only.
-if db.get_meta("source_url") is None and SOURCE_M3U:
-    db.set_meta("source_url", SOURCE_M3U)
+# Provider source is stored as discrete fields (src_base/src_user/src_pass).
+# Seed them on first run from an existing combined source_url (older builds) or
+# from the SOURCE_M3U env (a get.php/player_api link).
+if db.get_meta("src_base") is None:
+    seed = db.get_meta("source_url") or SOURCE_M3U
+    if seed:
+        base, user, pwd = creds_from_source(seed)
+        if base:
+            db.set_meta("src_base", base)
+        if user:
+            db.set_meta("src_user", user)
+        if pwd:
+            db.set_meta("src_pass", pwd)
 
 # Xtream wrapper credentials — generated once, shown in the UI to paste into
 # Dispatcharr's XC account. Overridable via env on first run.
@@ -56,6 +67,8 @@ def _check_creds(username: str, password: str) -> bool:
 # --- models ---------------------------------------------------------------
 class SourceRequest(BaseModel):
     url: str
+    username: str
+    password: str
 
 
 class ImportRequest(BaseModel):
@@ -73,7 +86,8 @@ class UnimportRequest(BaseModel):
 @app.get("/api/status")
 def status():
     return {
-        "source_url": db.get_meta("source_url") or "",
+        "source_url": db.get_meta("src_base") or "",
+        "source_user": db.get_meta("src_user") or "",
         "last_sync": db.get_meta("last_sync"),
         "counts": db.counts(),
     }
@@ -82,7 +96,9 @@ def status():
 @app.get("/api/source")
 def get_source():
     return {
-        "url": db.get_meta("source_url") or "",
+        "url": db.get_meta("src_base") or "",
+        "username": db.get_meta("src_user") or "",
+        "password": db.get_meta("src_pass") or "",
         "last_sync": db.get_meta("last_sync"),
     }
 
@@ -90,26 +106,28 @@ def get_source():
 @app.post("/api/source")
 def set_source(req: SourceRequest):
     url = req.url.strip()
-    if not url:
-        raise HTTPException(400, "URL is required")
+    user = req.username.strip()
+    pwd = req.password.strip()
     if not url.lower().startswith(("http://", "https://")):
-        raise HTTPException(400, "Must be an http(s):// Xtream URL")
-    base, user, pwd = creds_from_source(url)
+        raise HTTPException(400, "Server URL must start with http:// or https://")
     if not (user and pwd):
-        raise HTTPException(400, "URL must include username & password "
-                                 "(e.g. .../get.php?username=…&password=…&type=m3u_plus)")
-    db.set_meta("source_url", url)
-    return {"url": url}
+        raise HTTPException(400, "Username and password are required")
+    # Normalise to scheme://host[:port] (strip any pasted /get.php path or query).
+    parts = urllib.parse.urlsplit(url)
+    base = f"{parts.scheme}://{parts.netloc}"
+    db.set_meta("src_base", base)
+    db.set_meta("src_user", user)
+    db.set_meta("src_pass", pwd)
+    return {"url": base, "username": user}
 
 
 def _provider() -> ProviderXC:
-    src = db.get_meta("source_url")
-    if not src:
-        raise HTTPException(400, "No source configured — set a URL first")
-    base, user, pwd = creds_from_source(src)
+    base = db.get_meta("src_base")
+    user = db.get_meta("src_user")
+    pwd = db.get_meta("src_pass")
     if not (base and user and pwd):
-        raise HTTPException(400, "Source must be an Xtream URL with username & password "
-                                 "(e.g. .../get.php?username=…&password=…)")
+        raise HTTPException(400, "Configure the provider Server URL, username and "
+                                 "password first")
     return ProviderXC(base, user, pwd)
 
 

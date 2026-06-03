@@ -46,7 +46,7 @@ PROVIDER Xtream API ──read catalogue──▶  M3U Curator  ──serve only
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 DB_PATH=./curator.db .venv/bin/uvicorn backend.app:app --port 8753
 # open http://localhost:8753
-#  1) "Source…"  → paste your provider get.php URL (with username & password)
+#  1) "Source…"  → enter the provider Server URL, Username and Password
 #  2) "Sync"     → pulls the catalogue (~60s)
 #  3) browse Live/Movies/Series, click Import
 #  4) "Dispatcharr setup" → add the shown Xtream URL+creds in Dispatcharr (VOD scanning ON)

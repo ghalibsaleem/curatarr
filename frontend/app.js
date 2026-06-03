@@ -74,17 +74,19 @@ $("#syncBtn").onclick = runSync;
 // --- source settings ------------------------------------------------------
 async function openSource() {
   const s = await api("/api/source");
-  $("#sourceUrl").value = s.url || "";
-  $("#sourceHint").textContent = s.last_sync
-    ? `Last synced ${fmtTime(s.last_sync)}${s.last_bytes ? " · " + fmtBytes(s.last_bytes) : ""}`
-    : "Not synced yet.";
+  $("#srcUrl").value = s.url || "";
+  $("#srcUser").value = s.username || "";
+  $("#srcPass").value = s.password || "";
+  $("#sourceHint").textContent = s.last_sync ? `Last synced ${fmtTime(s.last_sync)}` : "Not synced yet.";
   $("#sourceModal").classList.remove("hidden");
-  $("#sourceUrl").focus();
+  $("#srcUrl").focus();
 }
 async function saveSource() {
-  const url = $("#sourceUrl").value.trim();
-  if (!url) { toast("Enter a URL"); return false; }
-  await api("/api/source", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+  const url = $("#srcUrl").value.trim();
+  const username = $("#srcUser").value.trim();
+  const password = $("#srcPass").value.trim();
+  if (!url || !username || !password) { toast("Enter server URL, username and password"); return false; }
+  await api("/api/source", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, username, password }) });
   await refreshStatus();
   return true;
 }
