@@ -110,10 +110,55 @@ document.querySelectorAll(".tab").forEach(btn => {
     state.q = "";
     state.page = 1;
     $("#search").value = "";
-    loadGroups();
-    loadList();
+    if (state.tab === "imported") {
+      $("#groups").innerHTML = "";
+      loadImported();
+    } else {
+      loadGroups();
+      loadList();
+    }
   };
 });
+
+// --- imported view --------------------------------------------------------
+async function loadImported() {
+  const r = await api("/api/imported");
+  const list = $("#list");
+  list.innerHTML = "";
+  $("#resultMeta").textContent = `${r.imported.length.toLocaleString()} imported`;
+  $("#pageInfo").textContent = "";
+  $("#prev").disabled = true; $("#next").disabled = true;
+  if (!r.imported.length) { list.append(el("div", "empty", "Nothing imported yet.")); return; }
+  for (const it of r.imported) list.append(importedRow(it));
+}
+function importedRow(it) {
+  const row = el("div", "row");
+  row.append(el("span", "badge", it.kind));
+  row.append(el("span", "name", it.name));
+  row.append(el("span", "grp", it.group_title || ""));
+  const btn = el("button", "", "Remove");
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      await api("/api/unimport", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [it.id] }) });
+      row.remove(); refreshStatus();
+    } catch (e) { toast("Remove failed: " + e); btn.disabled = false; }
+  };
+  row.append(btn);
+  return row;
+}
+
+// --- Dispatcharr setup ----------------------------------------------------
+$("#dispBtn").onclick = async () => {
+  try {
+    const s = await api("/api/xc-info");
+    $("#dispUrl").value = s.server_url;
+    $("#dispUser").value = s.username;
+    $("#dispPass").value = s.password;
+    $("#dispModal").classList.remove("hidden");
+  } catch (e) { toast("Failed: " + e); }
+};
+$("#closeDisp").onclick = () => $("#dispModal").classList.add("hidden");
 
 // --- groups (sidebar) -----------------------------------------------------
 let allGroups = [];

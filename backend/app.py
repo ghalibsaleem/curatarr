@@ -14,23 +14,23 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import shutil
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import parser
+from . import parser, xtream
 from .db import DB
 from .importer import import_rows
 
 SOURCE_M3U = os.environ.get("SOURCE_M3U", "")
 SOURCE_CACHE = os.environ.get("SOURCE_CACHE", "source_cache.m3u")
-DEST_M3U = os.environ.get("DEST_M3U", "curated.m3u")
 DB_PATH = os.environ.get("DB_PATH", "curator.db")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
@@ -40,6 +40,22 @@ db = DB(DB_PATH)
 # Seed the saved source from the env default on first run only.
 if db.get_meta("source_url") is None and SOURCE_M3U:
     db.set_meta("source_url", SOURCE_M3U)
+
+# Xtream wrapper credentials — generated once, shown in the UI to paste into
+# Dispatcharr's XC account. Overridable via env on first run.
+if db.get_meta("xc_user") is None:
+    db.set_meta("xc_user", os.environ.get("XC_USER", "curator"))
+if db.get_meta("xc_pass") is None:
+    db.set_meta("xc_pass", os.environ.get("XC_PASS", secrets.token_hex(8)))
+
+
+def _xc_creds() -> tuple[str, str]:
+    return db.get_meta("xc_user") or "", db.get_meta("xc_pass") or ""
+
+
+def _check_creds(username: str, password: str) -> bool:
+    u, p = _xc_creds()
+    return secrets.compare_digest(username, u) and secrets.compare_digest(password, p)
 
 
 # --- helpers --------------------------------------------------------------
@@ -85,12 +101,15 @@ class ImportRequest(BaseModel):
     season: int | None = None  # only with series_key; None = whole series
 
 
+class UnimportRequest(BaseModel):
+    ids: list[int]  # ledger row ids (from /api/imported)
+
+
 # --- source + sync --------------------------------------------------------
 @app.get("/api/status")
 def status():
     return {
         "source_url": db.get_meta("source_url") or "",
-        "dest": DEST_M3U,
         "last_sync": db.get_meta("last_sync"),
         "last_bytes": db.get_meta("last_bytes"),
         "counts": db.counts(),
@@ -187,12 +206,81 @@ def do_import(req: ImportRequest):
         raise HTTPException(400, "Provide ids or series_key")
     if not rows:
         raise HTTPException(404, "Nothing matched")
-    return import_rows(db, DEST_M3U, rows)
+    return import_rows(db, rows)
 
 
 @app.get("/api/imported")
 def imported():
     return {"imported": db.imported_list()}
+
+
+@app.post("/api/unimport")
+def unimport(req: UnimportRequest):
+    removed = db.remove_imported(req.ids)
+    return {"removed": removed}
+
+
+@app.get("/api/xc-info")
+def xc_info(request: Request):
+    """Connection details to paste into Dispatcharr as an Xtream Codes account."""
+    user, pwd = _xc_creds()
+    base = str(request.base_url).rstrip("/")
+    return {
+        "server_url": base,
+        "username": user,
+        "password": pwd,
+        "player_api": f"{base}/player_api.php?username={user}&password={pwd}",
+        "note": "Add in Dispatcharr as an Xtream Codes account with VOD scanning ON.",
+    }
+
+
+# --- Xtream Codes wrapper (consumed by Dispatcharr) -----------------------
+@app.get("/player_api.php")
+@app.get("/panel_api.php")
+def player_api(request: Request):
+    p = dict(request.query_params)
+    if not _check_creds(p.get("username", ""), p.get("password", "")):
+        # Mirror an XC auth failure: present user_info with auth=0.
+        return JSONResponse({"user_info": {"auth": 0}, "server_info": {}})
+    base = str(request.base_url).rstrip("/")
+    body = xtream.dispatch(db, p.get("action"), p, base)
+    return JSONResponse(body)
+
+
+@app.get("/xmltv.php")
+def xmltv(request: Request):
+    # We don't provide EPG; return a valid empty TV document.
+    return PlainTextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<tv></tv>',
+        media_type="application/xml",
+    )
+
+
+def _stream_redirect(username: str, password: str, filename: str):
+    if not _check_creds(username, password):
+        raise HTTPException(403, "Forbidden")
+    stream_id = filename.rsplit(".", 1)[0]
+    url = xtream.resolve_redirect(db, stream_id)
+    if not url:
+        raise HTTPException(404, "Unknown stream")
+    # Dispatcharr's VOD proxy follows this to the provider (we stay out of the
+    # byte path); credentials in the target URL are the provider's own.
+    return RedirectResponse(url, status_code=302)
+
+
+@app.get("/movie/{username}/{password}/{filename}")
+def stream_movie(username: str, password: str, filename: str):
+    return _stream_redirect(username, password, filename)
+
+
+@app.get("/series/{username}/{password}/{filename}")
+def stream_series(username: str, password: str, filename: str):
+    return _stream_redirect(username, password, filename)
+
+
+@app.get("/live/{username}/{password}/{filename}")
+def stream_live(username: str, password: str, filename: str):
+    return _stream_redirect(username, password, filename)
 
 
 # --- static frontend ------------------------------------------------------
