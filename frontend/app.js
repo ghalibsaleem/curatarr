@@ -151,6 +151,11 @@ async function removeIds(ids) {
 async function loadImported() {
   const r = await api("/api/imported");
   impData = r.imported;
+  renderImported();
+}
+function renderImported() {
+  const q = (state.q || "").toLowerCase();
+  const match = s => !q || (s || "").toLowerCase().includes(q);
   const list = $("#list");
   list.innerHTML = "";
   $("#pageInfo").textContent = ""; $("#prev").disabled = true; $("#next").disabled = true;
@@ -159,24 +164,24 @@ async function loadImported() {
     list.append(el("div", "empty", "Nothing imported yet."));
     return;
   }
-  const live = impData.filter(x => x.kind === "live");
-  const movies = impData.filter(x => x.kind === "movie");
-  const seriesEps = impData.filter(x => x.kind === "series");
-  // group series episodes by series_key
+  const live = impData.filter(x => x.kind === "live" && match(x.name));
+  const movies = impData.filter(x => x.kind === "movie" && match(x.name));
+  // group series episodes by series_key, then keep groups whose name matches
   const seriesMap = new Map();
-  for (const e of seriesEps) {
+  for (const e of impData.filter(x => x.kind === "series")) {
     const g = seriesMap.get(e.series_key) || { key: e.series_key, name: e.series_name || e.name, seasons: new Set(), eps: [] };
     g.seasons.add(e.season); g.eps.push(e); seriesMap.set(e.series_key, g);
   }
+  const series = [...seriesMap.values()].filter(g => match(g.name)).sort((a, b) => a.name.localeCompare(b.name));
+  const totalEps = series.reduce((n, g) => n + g.eps.length, 0);
+
   $("#resultMeta").textContent =
-    `${live.length} live · ${movies.length} movies · ${seriesMap.size} series (${seriesEps.length} ep)`;
+    `${live.length} live · ${movies.length} movies · ${series.length} series (${totalEps} ep)` + (q ? " · filtered" : "");
 
   if (live.length) { list.append(impHeader("Live")); live.forEach(it => list.append(impFlatRow(it))); }
   if (movies.length) { list.append(impHeader("Movies")); movies.forEach(it => list.append(impFlatRow(it))); }
-  if (seriesMap.size) {
-    list.append(impHeader("Series"));
-    [...seriesMap.values()].sort((a, b) => a.name.localeCompare(b.name)).forEach(g => list.append(impSeriesRow(g)));
-  }
+  if (series.length) { list.append(impHeader("Series")); series.forEach(g => list.append(impSeriesRow(g))); }
+  if (!live.length && !movies.length && !series.length) list.append(el("div", "empty", "No matches."));
 }
 function impHeader(t) { return el("div", "imp-section", t); }
 
@@ -284,7 +289,10 @@ $("#groupFilter").oninput = renderGroups;
 let searchTimer;
 $("#search").oninput = e => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; loadList(); }, 250);
+  searchTimer = setTimeout(() => {
+    state.q = e.target.value.trim(); state.page = 1;
+    if (state.tab === "imported") renderImported(); else loadList();
+  }, 250);
 };
 $("#prev").onclick = () => { if (state.page > 1) { state.page--; loadList(); } };
 $("#next").onclick = () => {
