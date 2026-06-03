@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS items (
     series_name TEXT NOT NULL DEFAULT '',
     season      INTEGER,
     episode     INTEGER,
+    tmdb        TEXT NOT NULL DEFAULT '',
     hash        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_items_kind        ON items(kind);
@@ -57,6 +58,7 @@ CREATE TABLE imported (
     season       INTEGER,
     episode      INTEGER,
     container_extension TEXT NOT NULL DEFAULT 'mp4',
+    tmdb         TEXT NOT NULL DEFAULT '',
     source       TEXT NOT NULL DEFAULT 'app',
     imported_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -89,13 +91,21 @@ class DB:
     def _migrate_imported(self) -> None:
         """Create (or upgrade) the imported ledger to the current schema. Old
         builds had a minimal (hash,kind,name) table with no URL/season data —
-        those rows can't be served via Xtream, so we recreate the table."""
+        those rows can't be served via Xtream, so we recreate the table.
+        Newer columns (tmdb) are added in place to preserve existing picks."""
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(imported)")}
         if not cols:
             self._conn.executescript(IMPORTED_DDL)
         elif "url" not in cols:
             self._conn.execute("DROP TABLE imported")
             self._conn.executescript(IMPORTED_DDL)
+        self._ensure_column("items", "tmdb", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("imported", "tmdb", "TEXT NOT NULL DEFAULT ''")
+
+    def _ensure_column(self, table: str, col: str, decl: str) -> None:
+        cols = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+        if col not in cols:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
     # --- scan -------------------------------------------------------------
     @staticmethod
@@ -103,8 +113,8 @@ class DB:
         cur.executemany(
             """INSERT INTO items
                (kind,name,group_title,tvg_id,tvg_logo,url,extinf,
-                series_key,series_name,season,episode,hash)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                series_key,series_name,season,episode,tmdb,hash)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             batch,
         )
 
@@ -121,7 +131,7 @@ class DB:
                 r["kind"], r["name"], r.get("group_title", ""), "",
                 r.get("tvg_logo", ""), r.get("url", ""), "",
                 r.get("series_key", ""), r.get("series_name", ""),
-                r.get("season"), r.get("episode"), r["hash"],
+                r.get("season"), r.get("episode"), r.get("tmdb", ""), r["hash"],
             ))
             if len(batch) >= 5000:
                 self._insert_batch(cur, batch)
@@ -239,15 +249,15 @@ class DB:
         return {r["series_key"] for r in rows}
 
     def series_row(self, series_key: str) -> Optional[sqlite3.Row]:
-        """The scan-cache row for a series (name/group), used to label episodes
-        fetched lazily from the provider."""
+        """The scan-cache row for a series (name/group/tmdb), used to label
+        episodes fetched lazily from the provider."""
         return self._conn.execute(
-            "SELECT name, group_title FROM items "
+            "SELECT name, group_title, tmdb FROM items "
             "WHERE kind='series' AND series_key=? LIMIT 1", (series_key,)
         ).fetchone()
 
     _PICK_COLS = ("id,kind,name,group_title,url,extinf,series_key,series_name,"
-                  "season,episode,hash")
+                  "season,episode,tmdb,hash")
 
     def rows_for_ids(self, ids: list[int]) -> list[sqlite3.Row]:
         if not ids:
@@ -276,15 +286,16 @@ class DB:
         recs = [(
             r["hash"], r["kind"], r["name"], r["group_title"], r["url"],
             r["extinf"], r["series_key"], r["series_name"],
-            r["season"], r["episode"], container_ext(r["url"], r["kind"]), source,
+            r["season"], r["episode"], container_ext(r["url"], r["kind"]),
+            r["tmdb"], source,
         ) for r in rows]
         cur = self._conn.cursor()
         before = cur.execute("SELECT COUNT(*) n FROM imported").fetchone()["n"]
         cur.executemany(
             """INSERT OR IGNORE INTO imported
                (hash,kind,name,group_title,url,extinf,series_key,series_name,
-                season,episode,container_extension,source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                season,episode,container_extension,tmdb,source)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             recs,
         )
         self._conn.commit()
@@ -325,7 +336,7 @@ class DB:
 
     def led_streams(self, kind: str, group: Optional[str]) -> list[sqlite3.Row]:
         """Flat ledger rows for live or movie."""
-        sql = ("SELECT id,name,group_title,url,container_extension "
+        sql = ("SELECT id,name,group_title,url,container_extension,tmdb "
                "FROM imported WHERE kind=?")
         args: list = [kind]
         if group is not None:
@@ -337,7 +348,7 @@ class DB:
     def led_series(self, group: Optional[str]) -> list[sqlite3.Row]:
         """Distinct series in the ledger."""
         sql = ("SELECT series_key, MIN(series_name) AS name, MIN(group_title) AS grp, "
-               "COUNT(*) AS episodes FROM imported WHERE kind='series'")
+               "MAX(tmdb) AS tmdb, COUNT(*) AS episodes FROM imported WHERE kind='series'")
         args: list = []
         if group is not None:
             sql += " AND group_title=?"
@@ -353,7 +364,7 @@ class DB:
 
     def led_series_episodes(self, series_key: str) -> list[sqlite3.Row]:
         return self._conn.execute(
-            "SELECT id,name,series_name,season,episode,container_extension,url "
+            "SELECT id,name,series_name,season,episode,container_extension,url,tmdb "
             "FROM imported WHERE kind='series' AND series_key=? "
             "ORDER BY season,episode", (series_key,)
         ).fetchall()
@@ -363,3 +374,16 @@ class DB:
             "SELECT url FROM imported WHERE id=?", (stream_id,)
         ).fetchone()
         return row["url"] if row else None
+
+    def backfill_ledger_tmdb(self) -> int:
+        """After a sync, populate tmdb on existing ledger picks from the freshly
+        rebuilt scan cache (matched by hash), so already-imported items gain
+        TMDB ids without needing re-import."""
+        cur = self._conn.cursor()
+        cur.execute(
+            "UPDATE imported SET tmdb = COALESCE("
+            "  (SELECT i.tmdb FROM items i WHERE i.hash = imported.hash), tmdb) "
+            "WHERE (tmdb IS NULL OR tmdb = '')"
+        )
+        self._conn.commit()
+        return cur.rowcount

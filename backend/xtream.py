@@ -19,6 +19,7 @@ Design notes (verified against Dispatcharr v0.25.1 source):
 """
 from __future__ import annotations
 
+import re
 import time
 import zlib
 from datetime import datetime, timezone
@@ -27,9 +28,30 @@ from urllib.parse import urlsplit
 
 from .db import DB
 
+# Leading provider/language tag, e.g. "EN - ", "NF -  ", "D+ - ", "QFR - ".
+# Requires whitespace after the separator so real titles like "X-Men" / "9-1-1"
+# (no surrounding spaces) are left intact.
+_PREFIX_RE = re.compile(r"^\s*[A-Za-z0-9+]{1,4}\s*[-|]\s+")
+_YEAR_RE = re.compile(r"\((?:19|20)\d{2}\)")
+
 
 def _now_ts() -> str:
     return str(int(time.time()))
+
+
+def strip_prefix(name: str) -> str:
+    return _PREFIX_RE.sub("", (name or "").strip(), count=1).strip()
+
+
+def clean_title(name: str) -> str:
+    """Turn a messy provider title into something matchable:
+    'EN - Inception (2010) TOM HARDY, DICAPRIO' -> 'Inception (2010)'."""
+    n = strip_prefix(name)
+    m = _YEAR_RE.search(n)
+    if m:
+        n = n[: m.end()]
+    n = re.sub(r"\s{2,}", " ", n).strip()
+    return n or (name or "")
 
 
 def cat_id(kind: str, group: str) -> str:
@@ -139,7 +161,7 @@ def vod_streams(db: DB, category_id: Optional[str] = None) -> list[dict]:
     ts = _now_ts()
     return [{
         "num": i + 1,
-        "name": r["name"],
+        "name": clean_title(r["name"]),
         "stream_type": "movie",
         "stream_id": r["id"],
         "stream_icon": "",
@@ -150,6 +172,8 @@ def vod_streams(db: DB, category_id: Optional[str] = None) -> list[dict]:
         "container_extension": r["container_extension"],
         "custom_sid": "",
         "direct_source": "",
+        "tmdb": r["tmdb"],
+        "tmdb_id": r["tmdb"],
     } for i, r in enumerate(rows)]
 
 
@@ -163,10 +187,11 @@ def vod_info(db: DB, vod_id: str) -> dict:
         "info": {
             "movie_image": "", "plot": "", "genre": "", "cast": "",
             "director": "", "rating": 0, "releasedate": "", "duration": "",
+            "tmdb": match["tmdb"], "tmdb_id": match["tmdb"],
         },
         "movie_data": {
             "stream_id": match["id"],
-            "name": match["name"],
+            "name": clean_title(match["name"]),
             "added": _now_ts(),
             "category_id": cat_id("movie", match["group_title"]),
             "container_extension": match["container_extension"],
@@ -184,7 +209,7 @@ def series(db: DB, category_id: Optional[str] = None) -> list[dict]:
     return [{
         "num": i + 1,
         "series_id": series_id_of(r["series_key"]),
-        "name": r["name"],
+        "name": clean_title(r["name"]),
         "cover": "",
         "plot": "",
         "cast": "",
@@ -199,6 +224,8 @@ def series(db: DB, category_id: Optional[str] = None) -> list[dict]:
         "backdrop_path": [],
         "youtube_trailer": "",
         "episode_run_time": "",
+        "tmdb": r["tmdb"],
+        "tmdb_id": r["tmdb"],
     } for i, r in enumerate(rows)]
 
 
@@ -212,7 +239,8 @@ def series_info(db: DB, series_id: str) -> dict:
         return {"info": {}, "seasons": [], "episodes": {}}
 
     eps = db.led_series_episodes(series_key)
-    name = (eps[0]["series_name"] or eps[0]["name"]) if eps else ""
+    name = clean_title((eps[0]["series_name"] or eps[0]["name"]) if eps else "")
+    tmdb = (eps[0]["tmdb"] if eps else "") or ""
     ts = _now_ts()
     episodes: dict[str, list] = {}
     season_counter: dict[int, int] = {}
@@ -223,7 +251,7 @@ def series_info(db: DB, series_id: str) -> dict:
         episodes.setdefault(str(season), []).append({
             "id": str(e["id"]),
             "episode_num": ep_num,
-            "title": e["name"],
+            "title": strip_prefix(e["name"]),
             "container_extension": e["container_extension"],
             "added": ts,
             "season": season,
@@ -239,6 +267,7 @@ def series_info(db: DB, series_id: str) -> dict:
         "info": {
             "name": name, "cover": "", "plot": "", "cast": "", "director": "",
             "genre": "", "releaseDate": "", "release_date": "", "rating": 0,
+            "tmdb": tmdb, "tmdb_id": tmdb,
         },
         "seasons": seasons,
         "episodes": episodes,

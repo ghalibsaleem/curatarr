@@ -158,7 +158,7 @@ def sync():
                 "group_title": live_cat.get(str(s.get("category_id")), ""),
                 "tvg_logo": s.get("stream_icon") or "", "url": url,
                 "series_key": "", "series_name": "", "season": None,
-                "episode": None, "hash": stream_hash(url),
+                "episode": None, "tmdb": "", "hash": stream_hash(url),
             })
         # Movies must be fetched per category (provider returns nothing for
         # get_vod_streams without a category_id).
@@ -169,7 +169,8 @@ def sync():
                     "kind": "movie", "name": s.get("name", ""),
                     "group_title": cname, "tvg_logo": s.get("stream_icon") or "",
                     "url": url, "series_key": "", "series_name": "",
-                    "season": None, "episode": None, "hash": stream_hash(url),
+                    "season": None, "episode": None,
+                    "tmdb": str(s.get("tmdb") or ""), "hash": stream_hash(url),
                 })
         for s in xc.series():
             sid = str(s.get("series_id"))
@@ -178,7 +179,8 @@ def sync():
                 "group_title": ser_cat.get(str(s.get("category_id")), ""),
                 "tvg_logo": s.get("cover") or "", "url": "",
                 "series_key": sid, "series_name": s.get("name", ""),
-                "season": None, "episode": None, "hash": f"series:{sid}",
+                "season": None, "episode": None,
+                "tmdb": str(s.get("tmdb") or ""), "hash": f"series:{sid}",
             })
     except HTTPException:
         raise
@@ -186,6 +188,7 @@ def sync():
         raise HTTPException(502, f"Xtream fetch failed: {e}")
 
     count = db.replace_items_rows(rows)
+    db.backfill_ledger_tmdb()  # give already-imported picks their TMDB ids
     db.set_meta("last_sync", datetime.now(timezone.utc).isoformat(timespec="seconds"))
     return {"parsed": count, "counts": db.counts()}
 
@@ -228,6 +231,7 @@ def _series_episode_rows(series_key: str) -> list[dict]:
     meta = db.series_row(series_key)
     name = meta["name"] if meta else ""
     group = meta["group_title"] if meta else ""
+    tmdb = meta["tmdb"] if meta else ""
     try:
         info = xc.series_info(series_key)
     except Exception as e:
@@ -243,7 +247,7 @@ def _series_episode_rows(series_key: str) -> list[dict]:
                 "name": e.get("title") or name, "group_title": group,
                 "url": url, "extinf": "", "series_key": series_key,
                 "series_name": name, "season": season,
-                "episode": e.get("episode_num"),
+                "episode": e.get("episode_num"), "tmdb": tmdb,
             })
     return out
 
