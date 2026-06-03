@@ -87,9 +87,9 @@ Then, in Dispatcharr → M3U & EPG Manager, add **each** account shown under
 ## Publishing the image (GHCR)
 
 A GitHub Action (`.github/workflows/docker-publish.yml`) builds a **multi-arch**
-image (linux/amd64 + linux/arm64 — Intel/AMD, Apple Silicon, 64-bit Raspberry Pi)
-and pushes it to `ghcr.io/<owner>/curatarr` on every push to `main` and on `v*`
-tags. Docker pulls the right architecture automatically. To use it:
+image (amd64 + arm64 + arm/v7 — Intel/AMD, Apple Silicon, 64-bit & 32-bit
+Raspberry Pi) and pushes it to `ghcr.io/<owner>/curatarr` on every push to `main`
+and on `v*` tags. Docker pulls the right architecture automatically. To use it:
 
 ```bash
 git remote add origin git@github.com:<you>/curatarr.git

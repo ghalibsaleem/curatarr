@@ -1,9 +1,9 @@
 name: Publish Docker image
 
-# Builds a multi-arch image (linux/amd64 + linux/arm64 — covers Intel/AMD,
-# Apple Silicon, and 64-bit Raspberry Pi) and pushes it to the GitHub Container
-# Registry (ghcr.io/<owner>/<repo>) on every push to main and on tags. Docker
-# pulls the right architecture automatically from the published manifest.
+# Builds a multi-arch image (amd64 + arm64 + arm/v7 — covers Intel/AMD, Apple
+# Silicon, 64-bit Raspberry Pi, and 32-bit Pi/ARM) and pushes it to the GitHub
+# Container Registry (ghcr.io/<owner>/<repo>) on every push to main and on tags.
+# Docker pulls the right architecture automatically from the published manifest.
 
 on:
   push:
@@ -47,7 +47,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
