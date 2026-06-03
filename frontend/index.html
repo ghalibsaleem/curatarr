@@ -17,7 +17,7 @@
     </div>
     <div class="actions">
       <button id="dispBtn" title="Show Xtream details to add in Dispatcharr">Dispatcharr setup</button>
-      <button id="sourceBtn" title="Set or change the source M3U URL">Source…</button>
+      <button id="sourceBtn" title="Set or change the provider Xtream URL">Source…</button>
       <button id="syncBtn" class="primary" title="Download fresh data from the saved URL">Sync</button>
       <span id="status" class="status"></span>
     </div>
@@ -62,12 +62,12 @@
   <div id="sourceModal" class="modal hidden">
     <div class="modal-box">
       <div class="modal-head">
-        <h2>Source M3U</h2>
+        <h2>Provider source (Xtream)</h2>
         <button id="closeSource">✕</button>
       </div>
       <div class="modal-body">
-        <label for="sourceUrl">M3U URL (or local file path)</label>
-        <input id="sourceUrl" type="text" placeholder="http://provider.example/get.php?username=…&type=m3u_plus" />
+        <label for="sourceUrl">Provider Xtream URL (with username &amp; password)</label>
+        <input id="sourceUrl" type="text" placeholder="http://provider.example/get.php?username=…&password=…&type=m3u_plus" />
         <p class="hint" id="sourceHint"></p>
         <div class="modal-foot">
           <button id="saveSource" class="primary">Save</button>
