@@ -1,0 +1,12 @@
+.venv
+rundata
+testdata
+data
+curated
+.git
+.gitignore
+__pycache__
+*.pyc
+*.db
+*.m3u
+*.m3u8

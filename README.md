@@ -64,15 +64,25 @@ DB_PATH=./curator.db .venv/bin/uvicorn backend.main:app --port 8753
 > `pip install -U fastapi pydantic 'uvicorn[standard]'`. The Docker image pins
 > Python 3.12 where `requirements.txt` installs cleanly.
 
-## Run with Docker
+## Deploy (Docker / TrueNAS Scale)
+
+On the TrueNAS host (user is comfortable with compose):
 
 ```bash
-docker compose up --build -d   # serves on :8753
+git clone <repo> /mnt/<pool>/apps/curatarr      # onto a dataset
+cd /mnt/<pool>/apps/curatarr
+# edit docker-compose.yml: point the /data volume at a snapshotted dataset
+docker compose up -d --build                     # serves on :8753
 ```
 
-Then add this app to Dispatcharr as an **Xtream Codes** account (M3U & EPG
-Manager), using the Server URL / username / password from **Dispatcharr setup**,
-with **Enable VOD Scanning ON**.
+The DB (subscriptions + curated picks) persists on the mounted `/data` volume, so
+keep it on a dataset you snapshot/back up. Dispatcharr reaches Curatarr via the
+TrueNAS host IP + port (`http://<truenas-ip>:8753`) — no shared Docker network
+needed.
+
+Then, in Dispatcharr → M3U & EPG Manager, add **each** account shown under
+**Dispatcharr setup** as an **Xtream Codes** account (Server URL
+`http://<truenas-ip>:8753`, **VOD Scanning ON**, **max connections 1**).
 
 ## Config (environment)
 
