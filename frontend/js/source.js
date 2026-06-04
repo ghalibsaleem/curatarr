@@ -1,4 +1,4 @@
-// Provider subscriptions dialog (add/remove subs).
+// Settings → Source: provider subscriptions (add/remove/save).
 import { api, $, el, toast, fmtTime, jsonPost } from "./util.js";
 import { refreshStatus, runSync } from "./status.js";
 
@@ -13,14 +13,13 @@ function subRow(sub) {
   return row;
 }
 
-export async function openSource() {
+export async function renderSource() {
   const s = await api("/api/source");
   const list = $("#subsList");
   list.innerHTML = "";
   const subs = (s.subs && s.subs.length) ? s.subs : [{}];
   subs.forEach(sub => list.append(subRow(sub)));
   $("#sourceHint").textContent = s.last_sync ? `Last synced ${fmtTime(s.last_sync)}` : "Not synced yet.";
-  $("#sourceModal").classList.remove("hidden");
 }
 
 function collectSubs() {
@@ -42,13 +41,11 @@ async function saveSource() {
 }
 
 $("#addSub").onclick = () => $("#subsList").append(subRow());
-$("#sourceBtn").onclick = openSource;
-$("#closeSource").onclick = () => $("#sourceModal").classList.add("hidden");
 $("#saveSource").onclick = async () => {
-  try { if (await saveSource()) { $("#sourceModal").classList.add("hidden"); toast("Source saved"); } }
+  try { if (await saveSource()) toast("Source saved"); }
   catch (e) { toast("Save failed: " + e); }
 };
 $("#saveSyncSource").onclick = async () => {
-  try { if (await saveSource()) { $("#sourceModal").classList.add("hidden"); await runSync(); } }
+  try { if (await saveSource()) await runSync(); }
   catch (e) { toast("Save failed: " + e); }
 };

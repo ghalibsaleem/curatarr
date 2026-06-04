@@ -16,12 +16,9 @@
       <button data-tab="imported" class="tab">Imported</button>
     </div>
     <div class="actions">
-      <button id="dispBtn" title="Show Xtream details to add in Dispatcharr">Dispatcharr setup</button>
-      <button id="importM3uBtn" title="Bulk-import an existing curated .m3u playlist">Import M3U</button>
-      <input id="m3uFile" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/x-mpegurl" hidden />
-      <button id="sourceBtn" title="Set or change the provider Xtream URL">Source…</button>
-      <button id="syncBtn" class="primary" title="Download fresh data from the saved URL">Sync</button>
-      <span id="status" class="status"></span>
+      <button id="syncBtn" class="primary" title="Pull fresh data from the provider">Sync</button>
+      <span id="syncSpinner" class="spinner hidden" title="Syncing…"></span>
+      <button id="settingsBtn" title="Source, import, Xtream & stats">⚙ Settings</button>
     </div>
   </header>
 
@@ -46,7 +43,7 @@
     </section>
   </main>
 
-  <!-- Series drill-down -->
+  <!-- Series drill-down (browse) -->
   <div id="seriesModal" class="modal hidden">
     <div class="modal-box">
       <div class="modal-head">
@@ -57,26 +54,6 @@
         </div>
       </div>
       <div id="seasons"></div>
-    </div>
-  </div>
-
-  <!-- Source settings -->
-  <div id="sourceModal" class="modal hidden">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h2>Provider source (Xtream)</h2>
-        <button id="closeSource">✕</button>
-      </div>
-      <div class="modal-body">
-        <p class="hint">Add one subscription per stream you want to load-balance (e.g. 2 subs = 2 screens). All must be the same provider.</p>
-        <div id="subsList"></div>
-        <button id="addSub" type="button">+ Add subscription</button>
-        <p class="hint" id="sourceHint"></p>
-        <div class="modal-foot">
-          <button id="saveSource" class="primary">Save</button>
-          <button id="saveSyncSource">Save &amp; Sync</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -94,31 +71,71 @@
     </div>
   </div>
 
-  <!-- Dispatcharr setup -->
-  <div id="dispModal" class="modal hidden">
-    <div class="modal-box">
+  <!-- Settings -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-box settings-box">
       <div class="modal-head">
-        <h2>Add to Dispatcharr</h2>
-        <button id="closeDisp">✕</button>
+        <h2>Settings</h2>
+        <button id="closeSettings">✕</button>
       </div>
-      <div class="modal-body">
-        <p class="hint">In Dispatcharr → M3U &amp; EPG Manager, add an <b>Xtream Codes</b> account with <b>VOD Scanning ON</b> and <b>max connections 1</b> for <b>each</b> account below. Dispatcharr load-balances across them.</p>
-        <label>Server URL</label><input id="dispUrl" type="text" readonly />
-        <div id="dispAccounts"></div>
-        <p class="hint">Only your imported picks are exposed. Streams redirect straight to the provider — this app stays out of the video path.</p>
-      </div>
-    </div>
-  </div>
+      <div class="settings-body">
+        <ul id="settingsNav">
+          <li data-section="overview" class="active">Overview</li>
+          <li data-section="source">Source</li>
+          <li data-section="import">Import</li>
+          <li data-section="xtream">Xtream</li>
+          <li data-section="downstream">Downstream</li>
+        </ul>
+        <div id="settingsContent">
 
-  <!-- M3U import result -->
-  <div id="m3uModal" class="modal hidden">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h2>Import M3U — result</h2>
-        <button id="closeM3u">✕</button>
-      </div>
-      <div class="modal-body">
-        <div id="m3uResult"></div>
+          <section class="panel" data-panel="overview">
+            <h3>Overview</h3>
+            <div id="ovStats" class="ov-stats"></div>
+            <div class="modal-foot">
+              <button id="syncBtnOverview" class="primary">Sync now</button>
+            </div>
+          </section>
+
+          <section class="panel hidden" data-panel="source">
+            <h3>Provider subscriptions</h3>
+            <p class="hint">Add one subscription per simultaneous stream you want
+              (e.g. 2 subs = 2 screens). All must be the same provider.</p>
+            <div id="subsList"></div>
+            <button id="addSub" type="button">+ Add subscription</button>
+            <p class="hint" id="sourceHint"></p>
+            <div class="modal-foot">
+              <button id="saveSource" class="primary">Save</button>
+              <button id="saveSyncSource">Save &amp; Sync</button>
+            </div>
+          </section>
+
+          <section class="panel hidden" data-panel="import">
+            <h3>Import a curated playlist</h3>
+            <p class="hint">Bulk-import from an existing <code>.m3u</code>. Matches by
+              provider stream id, so a playlist from any subscription works. Sync first.</p>
+            <button id="importM3uBtn">Choose .m3u &amp; import…</button>
+            <input id="m3uFile" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/x-mpegurl" hidden />
+            <div id="m3uResult"></div>
+          </section>
+
+          <section class="panel hidden" data-panel="xtream">
+            <h3>Xtream connection</h3>
+            <p class="hint">Add these to any Xtream Codes client — Dispatcharr (VOD Scanning
+              ON, max connections 1), a Jellyfin Xtream plugin, TiviMate, etc. One account
+              per subscription.</p>
+            <label>Server URL</label>
+            <input id="dispUrl" type="text" readonly />
+            <div id="dispAccounts"></div>
+          </section>
+
+          <section class="panel hidden" data-panel="downstream">
+            <h3>Downstream sync <span class="badge">coming soon</span></h3>
+            <p class="hint">Trigger a Dispatcharr VOD scan, then a Jellyfin library sync,
+              in sequence after curating — so you don't sync each by hand. Tracked in
+              issue&nbsp;#3.</p>
+          </section>
+
+        </div>
       </div>
     </div>
   </div>

@@ -1,7 +1,8 @@
-// Dispatcharr-setup modal: shows the Xtream account(s) to add in Dispatcharr.
+// Settings → Xtream: connection details for any Xtream client (Dispatcharr,
+// Jellyfin Xtream plugin, TiviMate, …). One account per subscription.
 import { api, $, el, toast } from "./util.js";
 
-$("#dispBtn").onclick = async () => {
+export async function renderXtream() {
   try {
     const s = await api("/api/xc-info");
     $("#dispUrl").value = s.server_url;
@@ -13,7 +14,7 @@ $("#dispBtn").onclick = async () => {
       const p = el("input"); p.type = "text"; p.readOnly = true; p.value = `password: ${a.password}`;
       wrap.append(u, p);
     });
-    $("#dispModal").classList.remove("hidden");
-  } catch (e) { toast("Failed: " + e); }
-};
-$("#closeDisp").onclick = () => $("#dispModal").classList.add("hidden");
+  } catch (e) {
+    toast("Failed: " + e);
+  }
+}

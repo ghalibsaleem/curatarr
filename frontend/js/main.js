@@ -1,12 +1,11 @@
-// Entry point: wire cross-cutting controls (tabs, search) and bootstrap.
-// Importing the feature modules also runs their own button wiring.
+// Entry point: wire tabs + search, bootstrap. Importing the feature modules runs
+// their own button wiring (Settings shell, source, xtream, import).
 import { $ } from "./util.js";
 import { state } from "./state.js";
 import { refreshStatus } from "./status.js";
 import { loadGroups, loadList } from "./browse.js";
 import { loadImported, renderImported } from "./imported.js";
-import { openSource } from "./source.js";
-import "./dispatcharr.js";
+import { openSettings } from "./settings.js";
 import "./m3uimport.js";
 
 // Tabs
@@ -45,5 +44,5 @@ $("#search").oninput = e => {
   const s = await refreshStatus();
   await loadGroups();
   await loadList();
-  if (!s.source_url) openSource();  // first run: prompt for a source
+  if (!s.source_url) openSettings("source");  // first run: prompt for a source
 })();

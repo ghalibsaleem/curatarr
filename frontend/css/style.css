@@ -28,6 +28,13 @@ header h1 .ver { font-size: .7rem; font-weight: 400; color: var(--muted); }
 }
 .tab.active { background: var(--panel2); color: var(--text); }
 .actions { margin-left: auto; display: flex; align-items: center; gap: .75rem; }
+.spinner {
+  width: 15px; height: 15px; border: 2px solid var(--line);
+  border-top-color: var(--accent); border-radius: 50%;
+  display: inline-block; animation: spin .8s linear infinite;
+}
+.spinner.hidden { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .status { color: var(--muted); font-size: .8rem; }
 button {
   background: var(--panel2); color: var(--text); border: 1px solid var(--line);
@@ -138,3 +145,34 @@ button.danger:hover { border-color: #e5484d; background: #3a1d22; }
   background: var(--panel2); border: 1px solid var(--accent); color: var(--text);
   padding: .6rem 1rem; border-radius: 8px; z-index: 30; font-size: .85rem;
 }
+
+/* --- Settings popup --- */
+.settings-box { width: min(900px, 95vw); }
+.settings-body { display: flex; min-height: 380px; max-height: 72vh; }
+#settingsNav {
+  width: 150px; flex-shrink: 0; list-style: none; margin: 0;
+  padding: .5rem; border-right: 1px solid var(--line); overflow: auto;
+}
+#settingsNav li {
+  padding: .5rem .6rem; border-radius: 6px; cursor: pointer;
+  color: var(--muted); font-size: .9rem;
+}
+#settingsNav li:hover { background: var(--panel2); }
+#settingsNav li.active { background: var(--panel2); color: var(--text); }
+#settingsContent { flex: 1; min-width: 0; overflow: auto; padding: 1rem 1.2rem; }
+.panel.hidden { display: none; }
+.panel h3 { margin: .2rem 0 .6rem; font-size: 1rem; }
+.panel h3 .badge {
+  font-size: .65rem; font-weight: 400; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: .05rem .35rem; margin-left: .4rem;
+}
+.panel .hint { color: var(--muted); font-size: .78rem; margin: .1rem 0 .5rem; }
+.panel label { display: block; font-size: .8rem; color: var(--muted); margin: .4rem 0 .2rem; }
+.panel input[type="text"] {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text);
+  border-radius: 6px; padding: .5rem .6rem; font-size: .85rem;
+}
+.ov-stats { display: flex; flex-direction: column; gap: .05rem; margin-bottom: .6rem; }
+.ov-row { display: flex; justify-content: space-between; gap: 1rem; padding: .4rem .1rem;
+  border-bottom: 1px solid var(--line); font-size: .9rem; }
+.ov-row .k { color: var(--muted); }

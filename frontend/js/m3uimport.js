@@ -1,9 +1,8 @@
-// Bulk-import an existing curated .m3u playlist and show the result.
+// Settings → Import: bulk-import an existing curated .m3u; result shown in-panel.
 import { api, $, el, toast } from "./util.js";
 import { refreshStatus } from "./status.js";
 
 $("#importM3uBtn").onclick = () => $("#m3uFile").click();
-$("#closeM3u").onclick = () => $("#m3uModal").classList.add("hidden");
 
 $("#m3uFile").onchange = async e => {
   const f = e.target.files[0];
@@ -44,10 +43,9 @@ function renderResult(r) {
   const byKind = Object.entries(r.by_kind || {}).map(([k, v]) => `${v} ${k}`).join(", ");
   if (byKind) wrap.append(stat("New by type", byKind));
   if (r.not_found_samples && r.not_found_samples.length) {
-    wrap.append(el("p", "hint", `Not found (showing ${r.not_found_samples.length} of ${r.not_found}) — not in the current catalogue:`));
+    wrap.append(el("p", "hint", `Not found (${r.not_found_samples.length} of ${r.not_found}) — not in the current catalogue:`));
     const list = el("div", "m3u-missing");
     r.not_found_samples.forEach(n => list.append(el("div", "", n)));
     wrap.append(list);
   }
-  $("#m3uModal").classList.remove("hidden");
 }
