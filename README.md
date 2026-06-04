@@ -170,3 +170,7 @@ Public (consumed by Dispatcharr): `GET /player_api.php` (Xtream actions),
   chain the downstream sync.
 - "New since last sync" diff view.
 - Multi-provider merge.
+
+## License
+
+[MIT](LICENSE) © Ghalib Saleem
