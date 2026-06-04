@@ -2,6 +2,7 @@
 // Both account and library selections are multi-pick and fully re-editable: on
 // reopen we show what's saved (by name), and re-discovery keeps them checked.
 import { api, $, el, toast, jsonPost } from "./util.js";
+import { openSettings } from "./settings.js";
 
 let cfg = { dispatcharr: {}, jellyfin: {} };
 
@@ -136,19 +137,40 @@ $("#dsSave").onclick = async () => {
   try { await save(false); } catch (e) { toast("Save failed: " + e); }
 };
 
-$("#dsRun").onclick = async () => {
-  const spin = $("#dsSpinner"), run = $("#dsRun");
-  run.disabled = true; spin.classList.remove("hidden");
-  $("#dsResult").innerHTML = "";
+// Shared by the panel's Run button and the header's Downstream sync button.
+// `saveFirst` persists the panel's current form edits before running (panel only).
+export async function runDownstream({ saveFirst = false } = {}) {
+  if (!saveFirst) {
+    // Header path: nothing to save — make sure something is configured first.
+    const c = await api("/api/downstream/config").catch(() => null);
+    if (c && !((c.dispatcharr && c.dispatcharr.url) || (c.jellyfin && c.jellyfin.url))) {
+      openSettings("downstream");
+      toast("Configure downstream sync first");
+      return;
+    }
+  }
+  const spins = [$("#dsSpinner"), $("#dsHeaderSpinner")].filter(Boolean);
+  const btns = [$("#dsRun"), $("#dsRunHeader")].filter(Boolean);
+  const result = $("#dsResult");
+  spins.forEach(s => s.classList.remove("hidden"));
+  btns.forEach(b => { b.disabled = true; });
+  if (result) result.innerHTML = "";
+  toast("Downstream sync started…");
   try {
-    await save(true);                       // run uses the saved config
-    toast("Downstream sync started…");
+    if (saveFirst) await save(true);        // run uses the saved config
     const r = await jsonPost("/api/downstream/run", {});
-    renderResult(r);
+    if (result) renderResult(r);
     toast(r.ok ? "Downstream sync complete" : "Downstream sync finished with errors");
-  } catch (e) { toast("Run failed: " + e); }
-  finally { run.disabled = false; spin.classList.add("hidden"); }
-};
+  } catch (e) {
+    toast("Run failed: " + e);
+  } finally {
+    spins.forEach(s => s.classList.add("hidden"));
+    btns.forEach(b => { b.disabled = false; });
+  }
+}
+
+$("#dsRun").onclick = () => runDownstream({ saveFirst: true });
+$("#dsRunHeader").onclick = () => runDownstream({ saveFirst: false });
 
 function renderResult(r) {
   const box = $("#dsResult");

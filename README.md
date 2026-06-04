@@ -45,19 +45,30 @@ PROVIDER Xtream API ──read catalogue──▶  Curatarr  ──serve only PI
   (`curator`, `curator2`, …, sharing one password). Each account's stream
   redirects use that sub's credentials, so Dispatcharr — which merges content by
   TMDB and balances across accounts — spreads concurrent streams over your subs.
-  Add every account shown in "Dispatcharr setup" (VOD scanning ON, max
+  Add every account shown in **Settings → Xtream** (VOD scanning ON, max
   connections 1 each).
+- **TMDB + clean titles** = the provider's `tmdb` id is passed through and messy
+  titles are cleaned (`EN - Inception (2010) …` → `Inception (2010)`), so
+  Dispatcharr/Jellyfin match metadata and posters.
+- **Bulk import** = already have a curated `.m3u`? **Settings → Import** matches
+  it back to the catalogue by provider stream-id (so a playlist from *any* sub
+  works) and reports imported / already / not-found / failed.
+- **One-click downstream sync** = after curating, **Settings → Downstream** (or
+  the header **Downstream sync** button) refreshes each curated Dispatcharr XC
+  account, then runs the Jellyfin Xtream-library plugin sync and refreshes only
+  the libraries you pick — in sequence, with per-step status.
 
 ## Run locally
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-DB_PATH=./curator.db .venv/bin/uvicorn backend.main:app --port 8753
+python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+DB_PATH=./curator.db .venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8753
 # open http://localhost:8753
-#  1) "Source…"  → add one or more provider subscriptions (Server URL/Username/Password)
-#  2) "Sync"     → pulls the catalogue (~60s)
-#  3) browse Live/Movies/Series, click Import
-#  4) "Dispatcharr setup" → add EACH shown Xtream account in Dispatcharr (VOD scanning ON)
+#  1) ⚙ Settings → Source  → add one or more provider subscriptions (Server URL/Username/Password)
+#  2) Sync                 → pulls the catalogue (~60s)
+#  3) browse Live/Movies/Series, click Import (or Settings → Import for a curated .m3u)
+#  4) Settings → Xtream    → add EACH shown account in Dispatcharr (VOD scanning ON, max conns 1)
+#  5) Settings → Downstream (optional) → configure Dispatcharr + Jellyfin, then "Downstream sync"
 ```
 
 > On bleeding-edge Python (3.14) install latest wheels:
@@ -81,21 +92,30 @@ TrueNAS host IP + port (`http://<truenas-ip>:8753`) — no shared Docker network
 needed.
 
 Then, in Dispatcharr → M3U & EPG Manager, add **each** account shown under
-**Dispatcharr setup** as an **Xtream Codes** account (Server URL
+**Settings → Xtream** as an **Xtream Codes** account (Server URL
 `http://<truenas-ip>:8753`, **VOD Scanning ON**, **max connections 1**).
 
 ## Publishing the image (GHCR)
 
 A GitHub Action (`.github/workflows/docker-publish.yml`) builds a **multi-arch**
 image (amd64 + arm64 — Intel/AMD, Apple Silicon, 64-bit Raspberry Pi) and pushes
-it to `ghcr.io/<owner>/curatarr` on every push to `main` and on `v*` tags. Docker
-pulls the right architecture automatically. (32-bit ARM isn't built — pydantic's
-Rust core has no armv7 wheels; use 64-bit Pi OS.) To use it:
+it to `ghcr.io/<owner>/curatarr`. Docker pulls the right architecture
+automatically. (32-bit ARM isn't built — pydantic's Rust core has no armv7
+wheels; use 64-bit Pi OS.)
+
+Tag scheme:
+
+| Tag | Source | Use |
+|-----|--------|-----|
+| `:latest` | push to **main** (HEAD) | current deployable version |
+| `:edge` | push to **beta** branch | pre-release testing |
+| `:X.Y.Z`, `:X.Y` | push a **`vX.Y.Z`** git tag | pin a frozen release |
 
 ```bash
 git remote add origin git@github.com:<you>/curatarr.git
-git push -u origin main          # triggers the build → ghcr.io/<you>/curatarr:latest
-git tag v0.1.0 && git push --tags   # also publishes :v0.1.0
+git push -u origin main              # → ghcr.io/<you>/curatarr:latest
+git tag v0.4.1 && git push --tags    # → :0.4.1 and :0.4
+git push origin beta                 # → :edge (pre-release)
 ```
 
 Then either make the GHCR package **public** (GitHub → Packages → curatarr →
@@ -128,18 +148,25 @@ Internal (UI):
 | `GET`  | `/api/groups?kind=live\|movie\|series` | categories w/ counts |
 | `GET`  | `/api/items?kind=live\|movie&group=&q=&page=` | paginated items |
 | `GET`  | `/api/series?group=&q=&page=` | paginated series (one row each) |
+| `POST` | `/api/series/counts` | `{series_keys:[…]}` → cached season/episode totals |
 | `GET`  | `/api/series/detail?series_key=` | seasons + episodes (lazy from provider) |
 | `POST` | `/api/import` | `{ids:[…]}` or `{series_key, season?, episode_ids?}` |
+| `POST` | `/api/import-m3u` | bulk-import a curated `.m3u` (multipart file) |
 | `POST` | `/api/unimport` | `{ids:[…]}` (ledger row ids) |
 | `GET`  | `/api/imported` | the curated ledger |
 | `GET`  | `/api/xc-info` | Xtream URL + credentials to paste into Dispatcharr |
+| `GET`/`POST` | `/api/downstream/config` | view / save Dispatcharr + Jellyfin downstream config |
+| `POST` | `/api/downstream/dispatcharr/accounts` | discover Dispatcharr M3U accounts |
+| `POST` | `/api/downstream/jellyfin/discover` | discover Jellyfin libraries + plugin task |
+| `POST` | `/api/downstream/run` | run the Dispatcharr → Jellyfin sync sequence |
 
 Public (consumed by Dispatcharr): `GET /player_api.php` (Xtream actions),
 `GET /xmltv.php` (empty EPG), and stream redirects
 `GET /movie|series|live/{user}/{password}/{id}.{ext}`.
 
-## Not in v1
+## Roadmap
 
-- TMDB/cover passthrough to Dispatcharr (it still enriches by name/year).
-- "New since last sync" diff view; scheduled auto-sync.
+- **Scheduled auto-sync** (#4): background provider sync on an interval, then
+  chain the downstream sync.
+- "New since last sync" diff view.
 - Multi-provider merge.

@@ -11,7 +11,7 @@ name: Publish Docker image
 
 on:
   push:
-    branches: [main]
+    branches: [main, beta]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -47,14 +47,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          # :latest tracks the newest RELEASE (highest semver tag), not main, so
-          # `pull …:latest` always == the newest version and shares its digest.
-          # Pushes to main publish :edge (bleeding edge) instead.
-          flavor: latest=auto
+          # :latest tracks main HEAD (the current deployable version); :edge tracks
+          # the beta branch (pre-release testing); :X.Y.Z / :X.Y come from v* tags.
+          flavor: latest=false
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=edge,branch=main
+            type=edge,branch=beta
             type=sha,format=short
 
       - name: Build and push

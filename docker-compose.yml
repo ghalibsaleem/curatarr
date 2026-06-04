@@ -3,8 +3,8 @@
 # Deploy from the CLI on the TrueNAS host (the app builds from this repo):
 #   1) Put this repo at /mnt/MainPool/AppsStorage/Curatarr
 #   2) docker compose up -d         (pull_policy: build forces an image build)
-#   3) Open http://<truenas-ip>:8753 → "Source…" → add subscription(s) → "Sync" → import.
-#   4) In Dispatcharr, add each account from "Dispatcharr setup" as an Xtream Codes
+#   3) Open http://<truenas-ip>:8753 → ⚙ Settings → Source → add subscription(s) → Sync → import.
+#   4) In Dispatcharr, add each account from Settings → Xtream as an Xtream Codes
 #      account using Server URL http://<truenas-ip>:8753 (VOD scanning ON, max conns 1).
 #
 # Dispatcharr reaches Curatarr via the TrueNAS host IP + published port (8753) — no
@@ -18,7 +18,7 @@ services:
     pull_policy: build
     # To pull the published image from GHCR instead (after the GitHub Action
     # publishes it), replace the three lines above with a pinned version:
-    #   image: ghcr.io/ghalibsaleem/curatarr:0.1.0   # or :latest
+    #   image: ghcr.io/ghalibsaleem/curatarr:0.4.1   # pin a release, or :latest (main HEAD)
     #   pull_policy: always
     container_name: curatarr
     ports:
@@ -26,7 +26,7 @@ services:
     environment:
       DB_PATH: /data/curatarr.db
       # Pin the wrapper password so it's stable (otherwise generated once and
-      # shown under "Dispatcharr setup"):
+      # shown under Settings → Xtream):
       # XC_USER: curator
       # XC_PASS: change-me-to-a-secret
       # Optionally seed the source on first run (otherwise add it in the UI):
