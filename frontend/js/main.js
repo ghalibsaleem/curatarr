@@ -3,8 +3,8 @@
 import { $ } from "./util.js";
 import { state } from "./state.js";
 import { refreshStatus } from "./status.js";
-import { loadGroups, loadList } from "./browse.js";
-import { loadImported, renderImported } from "./imported.js";
+import { loadGroups, loadList, renderGroups } from "./browse.js";
+import { loadImported, renderImported, renderImportedSidebar, resetImportedFilters } from "./imported.js";
 import { openSettings } from "./settings.js";
 import "./m3uimport.js";
 
@@ -19,7 +19,7 @@ document.querySelectorAll(".tab").forEach(btn => {
     state.page = 1;
     $("#search").value = "";
     if (state.tab === "imported") {
-      $("#groups").innerHTML = "";
+      resetImportedFilters();
       loadImported();
     } else {
       loadGroups();
@@ -27,6 +27,10 @@ document.querySelectorAll(".tab").forEach(btn => {
     }
   };
 });
+
+// Category-filter box: drives the browse sidebar or the imported sidebar.
+$("#groupFilter").oninput = () =>
+  state.tab === "imported" ? renderImportedSidebar() : renderGroups();
 
 // Search (server-side for browse tabs, in-memory for imported)
 let searchTimer;

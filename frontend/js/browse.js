@@ -12,7 +12,7 @@ export async function loadGroups() {
   renderGroups();
 }
 
-function renderGroups() {
+export function renderGroups() {
   const filter = $("#groupFilter").value.toLowerCase();
   const ul = $("#groups");
   ul.innerHTML = "";
@@ -175,7 +175,7 @@ async function openSeries(s) {
 }
 
 // --- wiring ---------------------------------------------------------------
-$("#groupFilter").oninput = renderGroups;
+// #groupFilter is wired by main.js (tab-aware: browse vs imported sidebar).
 $("#prev").onclick = () => { if (state.page > 1) { state.page--; loadList(); } };
 $("#next").onclick = () => { if (state.page * state.pageSize < state.total) { state.page++; loadList(); } };
 $("#closeSeries").onclick = () => $("#seriesModal").classList.add("hidden");

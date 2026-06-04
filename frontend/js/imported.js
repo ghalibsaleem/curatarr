@@ -4,6 +4,8 @@ import { state } from "./state.js";
 import { refreshStatus } from "./status.js";
 
 let impData = [];
+let impKind = "all";    // all | live | movie | series
+let impGroup = null;    // category filter (within the selected kind)
 
 async function removeIds(ids) {
   await jsonPost("/api/unimport", { ids });
@@ -11,15 +13,64 @@ async function removeIds(ids) {
   await loadImported();
 }
 
+export function resetImportedFilters() { impKind = "all"; impGroup = null; }
+
 export async function loadImported() {
   const r = await api("/api/imported");
   impData = r.imported;
+  if (impGroup && !impData.some(x => (x.group_title || "") === impGroup)) impGroup = null;
+  renderImportedSidebar();
   renderImported();
 }
+
+// --- left-panel filters (kind pills + categories) -------------------------
+export function renderImportedSidebar() {
+  const ul = $("#groups");
+  ul.innerHTML = "";
+
+  const kindCount = k =>
+    k === "all" ? new Set(impData.map(seriesAwareKey)).size
+    : k === "series" ? new Set(impData.filter(x => x.kind === "series").map(x => x.series_key)).size
+    : impData.filter(x => x.kind === k).length;
+
+  const kinds = [["all", "All"], ["live", "Live"], ["movie", "Movies"], ["series", "Series"]];
+  const pills = el("li", "imp-kinds");
+  kinds.forEach(([k, label]) => {
+    const b = el("button", "imp-kind" + (impKind === k ? " active" : ""), `${label} ${kindCount(k)}`);
+    b.onclick = () => { impKind = k; impGroup = null; renderImportedSidebar(); renderImported(); };
+    pills.append(b);
+  });
+  ul.append(pills);
+
+  // Categories within the selected kind.
+  const scope = impData.filter(x => impKind === "all" || x.kind === impKind);
+  const counts = new Map();
+  for (const x of scope) counts.set(x.group_title || "", (counts.get(x.group_title || "") || 0) + 1);
+
+  const filter = $("#groupFilter").value.toLowerCase();
+  const all = el("li", impGroup === null ? "active" : "");
+  all.append(el("span", "", "All categories"));
+  all.onclick = () => { impGroup = null; renderImportedSidebar(); renderImported(); };
+  ul.append(all);
+
+  [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, count]) => {
+    if (filter && !name.toLowerCase().includes(filter)) return;
+    const li = el("li", impGroup === name ? "active" : "");
+    li.append(el("span", "", name || "(no category)"));
+    li.append(el("span", "count", String(count)));
+    li.onclick = () => { impGroup = name; renderImportedSidebar(); renderImported(); };
+    ul.append(li);
+  });
+}
+
+// Count distinct entries treating a whole series as one (for the "All" pill).
+const seriesAwareKey = x => x.kind === "series" ? `s:${x.series_key}` : `${x.kind}:${x.id}`;
 
 export function renderImported() {
   const q = (state.q || "").toLowerCase();
   const match = s => !q || (s || "").toLowerCase().includes(q);
+  const inGroup = x => impGroup === null || (x.group_title || "") === impGroup;
+  const showKind = k => impKind === "all" || impKind === k;
   const list = $("#list");
   list.innerHTML = "";
   $("#pageInfo").textContent = ""; $("#prev").disabled = true; $("#next").disabled = true;
@@ -28,18 +79,25 @@ export function renderImported() {
     list.append(el("div", "empty", "Nothing imported yet."));
     return;
   }
-  const live = impData.filter(x => x.kind === "live" && match(x.name));
-  const movies = impData.filter(x => x.kind === "movie" && match(x.name));
-  const seriesMap = new Map();
-  for (const e of impData.filter(x => x.kind === "series")) {
-    const g = seriesMap.get(e.series_key) || { key: e.series_key, name: e.series_name || e.name, seasons: new Set(), eps: [] };
-    g.seasons.add(e.season); g.eps.push(e); seriesMap.set(e.series_key, g);
+  const live = showKind("live") ? impData.filter(x => x.kind === "live" && inGroup(x) && match(x.name)) : [];
+  const movies = showKind("movie") ? impData.filter(x => x.kind === "movie" && inGroup(x) && match(x.name)) : [];
+  let series = [];
+  if (showKind("series")) {
+    const seriesMap = new Map();
+    for (const e of impData.filter(x => x.kind === "series" && inGroup(x))) {
+      const g = seriesMap.get(e.series_key) || { key: e.series_key, name: e.series_name || e.name, seasons: new Set(), eps: [] };
+      g.seasons.add(e.season); g.eps.push(e); seriesMap.set(e.series_key, g);
+    }
+    series = [...seriesMap.values()].filter(g => match(g.name)).sort((a, b) => a.name.localeCompare(b.name));
   }
-  const series = [...seriesMap.values()].filter(g => match(g.name)).sort((a, b) => a.name.localeCompare(b.name));
   const totalEps = series.reduce((n, g) => n + g.eps.length, 0);
 
-  $("#resultMeta").textContent =
-    `${live.length} live · ${movies.length} movies · ${series.length} series (${totalEps} ep)` + (q ? " · filtered" : "");
+  const parts = [];
+  if (showKind("live")) parts.push(`${live.length} live`);
+  if (showKind("movie")) parts.push(`${movies.length} movies`);
+  if (showKind("series")) parts.push(`${series.length} series (${totalEps} ep)`);
+  $("#resultMeta").textContent = parts.join(" · ")
+    + (impGroup !== null ? ` · ${impGroup || "(no category)"}` : "") + (q ? " · search" : "");
 
   if (live.length) { list.append(impHeader("Live")); live.forEach(it => list.append(impFlatRow(it))); }
   if (movies.length) { list.append(impHeader("Movies")); movies.forEach(it => list.append(impFlatRow(it))); }
