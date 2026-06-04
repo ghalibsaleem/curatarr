@@ -7,6 +7,7 @@ import { loadGroups, loadList } from "./browse.js";
 import { loadImported, renderImported } from "./imported.js";
 import { openSource } from "./source.js";
 import "./dispatcharr.js";
+import "./m3uimport.js";
 
 // Tabs
 document.querySelectorAll(".tab").forEach(btn => {

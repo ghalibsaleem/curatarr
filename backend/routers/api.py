@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import urllib.parse
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, File, Query, Request, UploadFile
 
 from .. import __version__
 from ..container import catalog, imports, subscriptions, sync
@@ -98,6 +98,13 @@ def series_detail(series_key: str):
 @router.post("/import")
 def do_import(req: ImportRequest):
     return imports.do_import(req.ids, req.series_key, req.season, req.episode_ids)
+
+
+@router.post("/import-m3u")
+async def import_m3u(file: UploadFile = File(...)):
+    raw = await file.read()
+    text = raw.decode("utf-8", "replace")
+    return imports.import_m3u(text)
 
 
 @router.get("/imported")

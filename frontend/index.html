@@ -17,6 +17,8 @@
     </div>
     <div class="actions">
       <button id="dispBtn" title="Show Xtream details to add in Dispatcharr">Dispatcharr setup</button>
+      <button id="importM3uBtn" title="Bulk-import an existing curated .m3u playlist">Import M3U</button>
+      <input id="m3uFile" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/x-mpegurl" hidden />
       <button id="sourceBtn" title="Set or change the provider Xtream URL">Source…</button>
       <button id="syncBtn" class="primary" title="Download fresh data from the saved URL">Sync</button>
       <span id="status" class="status"></span>
@@ -104,6 +106,19 @@
         <label>Server URL</label><input id="dispUrl" type="text" readonly />
         <div id="dispAccounts"></div>
         <p class="hint">Only your imported picks are exposed. Streams redirect straight to the provider — this app stays out of the video path.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- M3U import result -->
+  <div id="m3uModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>Import M3U — result</h2>
+        <button id="closeM3u">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="m3uResult"></div>
       </div>
     </div>
   </div>

@@ -111,6 +111,10 @@ button.danger:hover { border-color: #e5484d; background: #3a1d22; }
 }
 .modal-body .hint { color: var(--muted); font-size: .78rem; margin: .1rem 0 .3rem; }
 .modal-foot { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .4rem; }
+.m3u-stat { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem .1rem; border-bottom: 1px solid var(--line); font-size: .88rem; }
+.m3u-stat .k { color: var(--muted); }
+.m3u-missing { max-height: 240px; overflow: auto; margin-top: .4rem; border: 1px solid var(--line); border-radius: 6px; padding: .4rem .6rem; }
+.m3u-missing div { font-size: .8rem; color: var(--muted); padding: .15rem 0; }
 .subrow { display: flex; gap: .4rem; margin-bottom: .4rem; align-items: center; }
 .subrow .sub-url { flex: 2; }
 .subrow .sub-user, .subrow .sub-pass { flex: 1; min-width: 0; }

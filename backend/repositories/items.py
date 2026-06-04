@@ -148,3 +148,23 @@ class ItemsRepo:
             "WHERE kind='series' AND series_key=?", (seasons, episodes, series_key)
         )
         self._conn.commit()
+
+    # --- bulk M3U import matching -----------------------------------------
+    def rows_by_provider_ids(self, kind: str, pids) -> list[sqlite3.Row]:
+        """Full pick rows for live/movie items matching the given provider ids."""
+        pids = list(pids)
+        out: list[sqlite3.Row] = []
+        for i in range(0, len(pids), 900):  # stay under SQLite's variable limit
+            chunk = pids[i:i + 900]
+            marks = ",".join("?" * len(chunk))
+            out += self._conn.execute(
+                f"SELECT {PICK_COLS} FROM items "
+                f"WHERE kind=? AND provider_id IN ({marks})", (kind, *chunk)
+            ).fetchall()
+        return out
+
+    def all_series(self) -> list[sqlite3.Row]:
+        """Every series row (name/key/group/tmdb) — for matching by name."""
+        return self._conn.execute(
+            "SELECT series_key, name, group_title, tmdb FROM items WHERE kind='series'"
+        ).fetchall()
