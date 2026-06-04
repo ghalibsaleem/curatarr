@@ -3,6 +3,7 @@ import { $ } from "./util.js";
 import { refreshStatus } from "./status.js";
 import { renderSource } from "./source.js";
 import { renderXtream } from "./xtream.js";
+import { renderDownstream } from "./downstream.js";
 
 // What to refresh when a section becomes visible.
 const onShow = {
@@ -10,7 +11,7 @@ const onShow = {
   source: renderSource,
   xtream: renderXtream,
   import: () => {},
-  downstream: () => {},
+  downstream: renderDownstream,
 };
 
 function showSection(name) {

@@ -129,10 +129,43 @@
           </section>
 
           <section class="panel hidden" data-panel="downstream">
-            <h3>Downstream sync <span class="badge">coming soon</span></h3>
-            <p class="hint">Trigger a Dispatcharr VOD scan, then a Jellyfin library sync,
-              in sequence after curating — so you don't sync each by hand. Tracked in
-              issue&nbsp;#3.</p>
+            <h3>Downstream sync</h3>
+            <p class="hint">After curating, refresh the curated account in Dispatcharr,
+              then run the Jellyfin Xtream-library sync and refresh only the libraries you
+              pick — in sequence, from one button.</p>
+
+            <fieldset class="ds-group">
+              <legend>Dispatcharr</legend>
+              <label>Base URL</label>
+              <input id="dsDispUrl" type="text" placeholder="http://dispatcharr:9191" />
+              <div class="ds-2col">
+                <div><label>Username</label><input id="dsDispUser" type="text" /></div>
+                <div><label>Password</label><input id="dsDispPass" type="password" /></div>
+              </div>
+              <button id="dsDispDiscover" type="button">Find accounts</button>
+              <label>Curated XC accounts to refresh (one per subscription)</label>
+              <div id="dsDispAccounts" class="ds-libs"><p class="hint">Discover to list accounts.</p></div>
+            </fieldset>
+
+            <fieldset class="ds-group">
+              <legend>Jellyfin</legend>
+              <label>Base URL</label>
+              <input id="dsJfUrl" type="text" placeholder="http://jellyfin:8096" />
+              <label>API key</label>
+              <input id="dsJfKey" type="password" />
+              <button id="dsJfDiscover" type="button">Find task &amp; libraries</button>
+              <label>Xtream-library sync task</label>
+              <select id="dsJfTask"><option value="">— discover first —</option></select>
+              <label>Libraries to refresh</label>
+              <div id="dsJfLibs" class="ds-libs"><p class="hint">Discover to list libraries.</p></div>
+            </fieldset>
+
+            <div class="modal-foot">
+              <button id="dsSave" class="primary">Save</button>
+              <button id="dsRun">Run downstream sync</button>
+              <span id="dsSpinner" class="spinner hidden"></span>
+            </div>
+            <div id="dsResult"></div>
           </section>
 
         </div>

@@ -11,6 +11,7 @@ from .repositories.items import ItemsRepo
 from .repositories.ledger import LedgerRepo
 from .repositories.meta import MetaRepo
 from .services.catalog import CatalogService
+from .services.downstream import DownstreamService
 from .services.imports import ImportService
 from .services.subscriptions import SubscriptionsService
 from .services.sync import SyncService
@@ -28,6 +29,7 @@ catalog = CatalogService(subscriptions, items, ledger)
 sync = SyncService(subscriptions, items, ledger, meta)
 imports = ImportService(items, ledger, catalog)
 panel = XtreamPanelService(ledger)
+downstream = DownstreamService(meta)
 
 
 def _seed() -> None:

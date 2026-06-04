@@ -27,3 +27,37 @@ class UnimportRequest(BaseModel):
 
 class CountsRequest(BaseModel):
     series_keys: list[str]
+
+
+class DispatcharrConfig(BaseModel):
+    url: str = ""
+    username: str = ""
+    password: str = ""
+    # One XC account per Curatarr subscription (load-balancing) → refresh each.
+    account_ids: list[int] = []
+    account_names: list[str] = []
+
+
+class JellyfinConfig(BaseModel):
+    url: str = ""
+    api_key: str = ""
+    task_id: str = ""
+    task_name: str = ""
+    library_ids: list[str] = []
+    library_names: list[str] = []
+
+
+class DownstreamConfig(BaseModel):
+    dispatcharr: DispatcharrConfig | None = None
+    jellyfin: JellyfinConfig | None = None
+
+
+class DiscoverDispatcharr(BaseModel):
+    url: str
+    username: str
+    password: str
+
+
+class DiscoverJellyfin(BaseModel):
+    url: str
+    api_key: str

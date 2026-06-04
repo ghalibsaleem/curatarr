@@ -6,9 +6,19 @@ import urllib.parse
 from fastapi import APIRouter, File, Query, Request, UploadFile
 
 from .. import __version__
-from ..container import catalog, imports, subscriptions, sync
-from ..errors import ConfigError
-from ..schemas import CountsRequest, ImportRequest, SourceRequest, UnimportRequest
+from ..container import catalog, downstream, imports, subscriptions, sync
+from ..errors import ConfigError, ProviderError
+from ..providers.dispatcharr_client import DispatcharrError
+from ..providers.jellyfin_client import JellyfinError
+from ..schemas import (
+    CountsRequest,
+    DiscoverDispatcharr,
+    DiscoverJellyfin,
+    DownstreamConfig,
+    ImportRequest,
+    SourceRequest,
+    UnimportRequest,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -115,6 +125,42 @@ def imported():
 @router.post("/unimport")
 def unimport(req: UnimportRequest):
     return {"removed": imports.unimport(req.ids)}
+
+
+@router.get("/downstream/config")
+def downstream_config():
+    return downstream.get_config()
+
+
+@router.post("/downstream/config")
+def set_downstream_config(req: DownstreamConfig):
+    cfg = {}
+    if req.dispatcharr is not None:
+        cfg["dispatcharr"] = req.dispatcharr.model_dump()
+    if req.jellyfin is not None:
+        cfg["jellyfin"] = req.jellyfin.model_dump()
+    return downstream.set_config(cfg)
+
+
+@router.post("/downstream/dispatcharr/accounts")
+def downstream_dispatcharr_accounts(req: DiscoverDispatcharr):
+    try:
+        return {"accounts": downstream.dispatcharr_accounts(req.url, req.username, req.password)}
+    except DispatcharrError as e:
+        raise ProviderError(str(e))
+
+
+@router.post("/downstream/jellyfin/discover")
+def downstream_jellyfin_discover(req: DiscoverJellyfin):
+    try:
+        return downstream.jellyfin_discover(req.url, req.api_key)
+    except JellyfinError as e:
+        raise ProviderError(str(e))
+
+
+@router.post("/downstream/run")
+def downstream_run():
+    return downstream.run()
 
 
 @router.get("/xc-info")
