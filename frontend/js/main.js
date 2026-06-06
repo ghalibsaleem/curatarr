@@ -8,24 +8,37 @@ import { loadImported, renderImported, renderImportedSidebar, resetImportedFilte
 import { openSettings } from "./settings.js";
 import "./m3uimport.js";
 
-// Tabs
+// Tabs ↔ URL hash, so a refresh / back-forward keeps the current tab.
+const TAB_TO_HASH = { live: "live", movie: "movies", series: "series", imported: "imported" };
+const HASH_TO_TAB = { live: "live", movies: "movie", series: "series", imported: "imported" };
+const tabFromHash = () => HASH_TO_TAB[(location.hash || "").replace(/^#/, "")];
+
+function showTab(tab) {
+  if (!TAB_TO_HASH[tab]) tab = "live";
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  state.tab = tab;          // set before touching the hash so hashchange no-ops
+  state.group = null;
+  state.q = "";
+  state.page = 1;
+  $("#search").value = "";
+  location.hash = TAB_TO_HASH[tab];
+  if (tab === "imported") {
+    resetImportedFilters();
+    loadImported();
+  } else {
+    loadGroups();
+    loadList();
+  }
+}
+
 document.querySelectorAll(".tab").forEach(btn => {
-  btn.onclick = () => {
-    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    state.tab = btn.dataset.tab;
-    state.group = null;
-    state.q = "";
-    state.page = 1;
-    $("#search").value = "";
-    if (state.tab === "imported") {
-      resetImportedFilters();
-      loadImported();
-    } else {
-      loadGroups();
-      loadList();
-    }
-  };
+  btn.onclick = () => showTab(btn.dataset.tab);
+});
+
+// Back/forward or manual hash edits.
+window.addEventListener("hashchange", () => {
+  const tab = tabFromHash();
+  if (tab && tab !== state.tab) showTab(tab);
 });
 
 // Category-filter box: drives the browse sidebar or the imported sidebar.
@@ -43,10 +56,9 @@ $("#search").oninput = e => {
   }, 250);
 };
 
-// Bootstrap
+// Bootstrap — restore the tab from the URL hash (default: live).
 (async function init() {
   const s = await refreshStatus();
-  await loadGroups();
-  await loadList();
+  showTab(tabFromHash() || "live");
   if (!s.source_url) openSettings("source");  // first run: prompt for a source
 })();

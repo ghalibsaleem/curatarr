@@ -145,11 +145,18 @@ class DownstreamService:
 
     # --- stage implementations -------------------------------------------
     def _dispatcharr_refresh(self, client: DispatcharrClient, account_id: int) -> str:
-        client.refresh_account(int(account_id))
-        status = client.wait_until_done(int(account_id))
+        aid = int(account_id)
+        client.refresh_account(aid)
+        # 1) wait for the channel/M3U refresh
+        status = client.wait_until_done(aid)
         if status == "error":
             raise DispatcharrError("Dispatcharr reported an error during refresh")
-        return f"refreshed ({status or 'done'})"
+        msg = f"channels {status or 'done'}"
+        # 2) the account refresh also queues an async VOD rescan — wait for it
+        #    too, so the Jellyfin step never runs against a half-rebuilt catalog.
+        if client.vod_enabled(aid):
+            msg += "; " + client.wait_vod_until_done(aid)
+        return msg
 
     def _jellyfin_task(self, client: JellyfinClient, task_id: str) -> str:
         client.run_task(task_id)

@@ -114,3 +114,58 @@ class DispatcharrClient:
                 return st                       # never went busy = finished fast
             time.sleep(interval)
         raise DispatcharrError(f"Timed out waiting for Dispatcharr refresh ({timeout}s)")
+
+    # --- VOD rescan completion -------------------------------------------
+    # A full account refresh ALSO queues a separate async VOD rescan whose
+    # completion is NOT reflected in the account `status` field (Dispatcharr only
+    # announces it over WebSocket). To avoid the downstream sync racing ahead
+    # while VOD is half-rebuilt, we detect "VOD settled" by polling the
+    # per-account VOD item count until it stops changing.
+
+    def account(self, account_id: int) -> dict:
+        return self._request("GET", f"/api/m3u/accounts/{account_id}/") or {}
+
+    def vod_enabled(self, account_id: int) -> bool:
+        cp = (self.account(account_id).get("custom_properties") or {})
+        return bool(cp.get("enable_vod"))
+
+    def _list_count(self, path: str, account_id: int) -> int:
+        out = self._request("GET", f"{path}?m3u_account={account_id}&page_size=1")
+        if isinstance(out, dict):
+            return int(out.get("count") or 0)
+        if isinstance(out, list):
+            return len(out)
+        return 0
+
+    def vod_item_count(self, account_id: int) -> int:
+        """Movies + series currently scanned for this account."""
+        return (self._list_count("/api/vod/movies/", account_id)
+                + self._list_count("/api/vod/series/", account_id))
+
+    def wait_vod_until_done(self, account_id: int, timeout: int = 1200,
+                            interval: int = 5, stable_polls: int = 3,
+                            settle_grace: int = 12) -> str:
+        """Best-effort wait for the async VOD rescan: poll the per-account VOD
+        item count until it's unchanged for `stable_polls` consecutive checks.
+        `settle_grace` gives the queued task time to start mutating counts; for
+        an unchanged catalogue the scan finishes within it and the count is
+        already steady. (No REST completion flag exists; this is the cleanest
+        poll-able proxy short of consuming Dispatcharr's WebSocket.)"""
+        start = time.time()
+        time.sleep(min(settle_grace, timeout))
+        last = None
+        stable = 0
+        while time.time() - start < timeout:
+            try:
+                cur = self.vod_item_count(account_id)
+            except DispatcharrError:
+                cur = last  # transient blip — don't reset the stability streak
+            if cur is not None and cur == last:
+                stable += 1
+                if stable >= stable_polls:
+                    return f"VOD settled ({cur} items)"
+            else:
+                stable = 0
+                last = cur
+            time.sleep(interval)
+        return f"VOD wait timed out (~{last} items)"
