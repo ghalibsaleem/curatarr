@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .container import scheduler
 from .errors import AppError
-from .routers import api, xtream
+from .routers import api, auth, xtream
 
 
 @asynccontextmanager
@@ -35,6 +35,7 @@ async def _app_error_handler(request: Request, exc: AppError):
     return JSONResponse({"detail": str(exc)}, status_code=exc.status_code)
 
 
+app.include_router(auth.router)
 app.include_router(api.router)
 app.include_router(xtream.router)
 

@@ -10,6 +10,8 @@ from .providers.xtream_client import creds_from_source
 from .repositories.items import ItemsRepo
 from .repositories.ledger import LedgerRepo
 from .repositories.meta import MetaRepo
+from .repositories.users import UsersRepo
+from .services.auth import AuthService
 from .services.catalog import CatalogService
 from .services.downstream import DownstreamService
 from .services.imports import ImportService
@@ -23,6 +25,7 @@ db = Database(settings.db_path)
 meta = MetaRepo(db)
 items = ItemsRepo(db)
 ledger = LedgerRepo(db)
+users = UsersRepo(db)
 
 # Service layer
 subscriptions = SubscriptionsService(meta)
@@ -32,6 +35,7 @@ imports = ImportService(items, ledger, catalog)
 panel = XtreamPanelService(ledger)
 downstream = DownstreamService(meta)
 scheduler = SchedulerService(meta, sync, downstream)
+auth = AuthService(users)
 
 
 def _seed() -> None:

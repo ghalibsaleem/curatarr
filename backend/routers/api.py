@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import urllib.parse
 
-from fastapi import APIRouter, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
 from .. import __version__
+from .auth import require_auth
 from ..container import catalog, downstream, imports, scheduler, subscriptions, sync
 from ..errors import ConfigError, ProviderError
 from ..providers.dispatcharr_client import DispatcharrError
@@ -22,7 +23,9 @@ from ..schemas import (
     UnimportRequest,
 )
 
-router = APIRouter(prefix="/api")
+# Every internal endpoint requires a logged-in session. Auth endpoints live on a
+# separate unguarded router; the public Xtream surface has its own credentials.
+router = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
 
 
 def _test_result(fn):

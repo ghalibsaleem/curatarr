@@ -1,6 +1,15 @@
 // Low-level helpers shared across modules.
 
+// Auth.js registers a handler here so a 401 (expired/absent session) on any API
+// call pops the login overlay instead of surfacing as a generic error.
+let onUnauthorized = null;
+export const setUnauthorizedHandler = fn => { onUnauthorized = fn; };
+
 export const api = (p, opts) => fetch(p, opts).then(r => {
+  if (r.status === 401) {
+    if (onUnauthorized) onUnauthorized();
+    return Promise.reject("Session expired — please sign in");
+  }
   if (!r.ok) return r.json().then(e => Promise.reject(e.detail || r.statusText));
   return r.json();
 });

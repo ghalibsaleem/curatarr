@@ -39,6 +39,24 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- UI authentication: a single admin account (first-run setup) and opaque,
+-- DB-backed session tokens stored in an httpOnly cookie. Separate from the
+-- XC_USER/XC_PASS wrapper credentials Dispatcharr uses.
+CREATE TABLE IF NOT EXISTS users (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    username   TEXT UNIQUE NOT NULL,
+    pw_hash    TEXT NOT NULL,
+    is_admin   INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 """
 
 # The imported ledger. `id` is stable (AUTOINCREMENT) and used as the Xtream

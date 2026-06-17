@@ -6,6 +6,7 @@ import { refreshStatus } from "./status.js";
 import { loadGroups, loadList, renderGroups } from "./browse.js";
 import { loadImported, renderImported, renderImportedSidebar, resetImportedFilters } from "./imported.js";
 import { openSettings } from "./settings.js";
+import { ensureAuth } from "./auth.js";
 import "./m3uimport.js";
 
 // Tabs ↔ URL hash, so a refresh / back-forward keeps the current tab.
@@ -56,8 +57,9 @@ $("#search").oninput = e => {
   }, 250);
 };
 
-// Bootstrap — restore the tab from the URL hash (default: live).
+// Bootstrap — gate on auth (login / first-run setup), then restore the tab.
 (async function init() {
+  await ensureAuth();
   const s = await refreshStatus();
   showTab(tabFromHash() || "live");
   if (!s.source_url) openSettings("source");  // first run: prompt for a source
