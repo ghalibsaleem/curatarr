@@ -25,6 +25,13 @@ export async function refreshStatus() {
     ov.append(row("Source", s.source_url
       ? `${s.source_url} · ${s.sub_count} sub${s.sub_count === 1 ? "" : "s"}` : "not set"));
     ov.append(row("Last sync", s.last_sync ? fmtTime(s.last_sync) : "never"));
+    if (s.auto_sync) {
+      ov.append(row("Next sync", s.next_sync ? fmtTime(s.next_sync) : "—"));
+    }
+    if (s.last_auto_sync) {
+      const a = s.last_auto_sync;
+      ov.append(row("Last auto-sync", `${fmtTime(a.at)} · ${a.ok ? "ok" : "failed"}`));
+    }
   }
   return s;
 }

@@ -1,9 +1,10 @@
-// Settings popup: left-nav sections (Overview / Source / Import / Xtream / Downstream).
+// Settings popup: left-nav sections (Overview / Source / Import / Xtream / Downstream / Schedule).
 import { $ } from "./util.js";
 import { refreshStatus } from "./status.js";
 import { renderSource } from "./source.js";
 import { renderXtream } from "./xtream.js";
 import { renderDownstream } from "./downstream.js";
+import { renderSchedule } from "./schedule.js";
 
 // What to refresh when a section becomes visible.
 const onShow = {
@@ -12,6 +13,7 @@ const onShow = {
   xtream: renderXtream,
   import: () => {},
   downstream: renderDownstream,
+  schedule: renderSchedule,
 };
 
 function showSection(name) {

@@ -6,6 +6,7 @@ episodes are fetched lazily on open/import.
 """
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
 
 from ..errors import ProviderError
@@ -23,9 +24,16 @@ class SyncService:
         self.items = items
         self.ledger = ledger
         self.meta = meta
+        # Serialize syncs so a scheduled run and a manual "Sync now" can't both
+        # rebuild the scan cache at once.
+        self._lock = threading.Lock()
 
     def run(self) -> int:
         """Rebuild the scan cache from the provider. Returns parsed item count."""
+        with self._lock:
+            return self._run()
+
+    def _run(self) -> int:
         xc = self.subs.primary_provider()
         try:
             xc.authenticate()

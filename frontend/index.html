@@ -87,6 +87,7 @@
           <li data-section="import">Import</li>
           <li data-section="xtream">Xtream</li>
           <li data-section="downstream">Downstream</li>
+          <li data-section="schedule">Schedule</li>
         </ul>
         <div id="settingsContent">
 
@@ -168,6 +169,50 @@
               <span id="dsSpinner" class="spinner hidden"></span>
             </div>
             <div id="dsResult"></div>
+          </section>
+
+          <section class="panel hidden" data-panel="schedule">
+            <h3>Scheduled auto-sync</h3>
+            <p class="hint">Automatically pull the provider catalogue on a schedule.
+              A run missed while the app was offline is skipped — the next slot is used.</p>
+
+            <label class="ck"><input id="schEnabled" type="checkbox" /> Enable scheduled auto-sync</label>
+
+            <fieldset class="ds-group">
+              <legend>When</legend>
+              <label>Frequency</label>
+              <select id="schFreq">
+                <option value="daily">Daily</option>
+                <option value="twice-weekly">Twice a week</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+
+              <div id="schDaysRow" class="hidden">
+                <label id="schDaysLabel">Day</label>
+                <div id="schDays" class="sch-days"></div>
+              </div>
+
+              <div id="schDomRow" class="hidden">
+                <label>Day of month</label>
+                <select id="schDom"></select>
+                <p class="hint">1–28 always run; 29–31 only fire in months that have that day.</p>
+              </div>
+
+              <div class="ds-2col">
+                <div><label>Time</label><input id="schTime" type="time" value="03:00" /></div>
+                <div><label>Timezone</label><select id="schTz"></select></div>
+              </div>
+            </fieldset>
+
+            <label class="ck"><input id="schDownstream" type="checkbox" /> Run downstream sync after each auto-sync</label>
+
+            <p class="hint" id="schNext">Next run: —</p>
+
+            <div class="modal-foot">
+              <button id="schSave" class="primary">Save</button>
+            </div>
+            <div id="schLast"></div>
           </section>
 
         </div>

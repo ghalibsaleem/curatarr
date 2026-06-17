@@ -1,17 +1,18 @@
-name: Publish Docker image
+name: Publish version image
 
-# Builds a multi-arch image (amd64 + arm64 — covers Intel/AMD, Apple Silicon, and
-# 64-bit Raspberry Pi) and pushes it to the GitHub Container Registry
-# (ghcr.io/<owner>/<repo>) on every push to main and on tags. Docker pulls the
-# right architecture automatically from the published manifest.
+# Builds the multi-arch image (amd64 + arm64) and pushes the VERSION tags to GHCR.
+#   * a `vX.Y.Z` git tag → :X.Y.Z and :X.Y   (a frozen release)
+#   * a push to `beta`   → :edge             (pre-release testing)
+# `:latest` is NOT published here — it is promoted from a successful release build
+# by the chained "Promote :latest" workflow (docker-latest.yml), so :latest always
+# tracks the newest release rather than main HEAD.
 #
 # 32-bit ARM (arm/v7) is intentionally NOT built: pydantic-core (Rust), uvloop and
-# watchfiles ship no 32-bit-ARM wheels, so it would require a slow source compile
-# under emulation. Run 64-bit Raspberry Pi OS to use the arm64 image instead.
+# watchfiles ship no 32-bit-ARM wheels. Run 64-bit Raspberry Pi OS for arm64.
 
 on:
   push:
-    branches: [main, beta]
+    branches: [beta]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -19,8 +20,6 @@ permissions:
   contents: read
   packages: write
 
-# Run JS-based actions on Node 24 (Node 20 is being deprecated). GitHub's
-# recommended opt-in until Node 24 becomes the runner default.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -47,11 +46,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          # :latest tracks main HEAD (the current deployable version); :edge tracks
-          # the beta branch (pre-release testing); :X.Y.Z / :X.Y come from v* tags.
+          # :X.Y.Z / :X.Y come from v* tags; :edge from the beta branch. No :latest.
           flavor: latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=edge,branch=beta
