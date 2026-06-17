@@ -3,6 +3,7 @@ imported flags, and lazily fetches per-series totals/episodes from the provider.
 """
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 
 from ..errors import ProviderError
@@ -10,6 +11,19 @@ from ..providers.xtream_client import stream_hash
 from ..repositories.items import ItemsRepo
 from ..repositories.ledger import LedgerRepo
 from .subscriptions import SubscriptionsService
+
+
+def _episode_meta(info: dict) -> dict:
+    """Per-episode metadata from a get_series_info episode's `info` block,
+    dropping empties (the panel defaults anything absent)."""
+    fields = {
+        "movie_image": info.get("movie_image"),
+        "plot": info.get("plot") or info.get("overview"),
+        "rating": info.get("rating"),
+        "air_date": info.get("air_date") or info.get("releasedate"),
+        "duration": info.get("duration"),
+    }
+    return {k: v for k, v in fields.items() if v not in ("", 0, [], None, "0")}
 
 
 class CatalogService:
@@ -79,6 +93,11 @@ class CatalogService:
         name = meta["name"] if meta else ""
         group = meta["group_title"] if meta else ""
         tmdb = meta["tmdb"] if meta else ""
+        # Series-level metadata (cover/plot/cast/…) captured at sync; rides along
+        # on each episode row so the panel can serve it (the ledger has no series
+        # row of its own).
+        series_md = (meta["metadata"] if meta else "") or ""
+        series_md_obj = json.loads(series_md) if series_md else {}
         try:
             info = xc.series_info(series_key)
         except Exception as e:
@@ -89,6 +108,9 @@ class CatalogService:
             for e in eps:
                 eid = str(e.get("id"))
                 url = xc.episode_url(eid, e.get("container_extension") or "mp4")
+                md = _episode_meta(e.get("info") or {})
+                if series_md_obj:
+                    md["series"] = series_md_obj
                 out.append({
                     "ep_id": eid, "hash": stream_hash(url), "kind": "series",
                     "name": e.get("title") or name, "group_title": group,
@@ -96,6 +118,7 @@ class CatalogService:
                     "series_name": name, "season": season,
                     "episode": e.get("episode_num"), "tmdb": tmdb,
                     "provider_id": eid,
+                    "metadata": json.dumps(md, separators=(",", ":")) if md else "",
                 })
         return out
 

@@ -11,6 +11,7 @@ Design notes (verified against Dispatcharr v0.25.1 source):
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 import zlib
@@ -20,6 +21,20 @@ from urllib.parse import urlsplit
 
 from ..providers.xtream_client import stream_url
 from ..repositories.ledger import LedgerRepo
+
+
+def _load_md(row) -> dict:
+    """Parse a pick row's forwarded-metadata JSON into a dict (or {})."""
+    try:
+        raw = row["metadata"] if "metadata" in row.keys() else ""
+    except (IndexError, KeyError, TypeError):
+        raw = ""
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
 
 # Leading provider/language tag, e.g. "EN - ", "NF -  ", "D+ - ". Requires
 # whitespace after the separator so "X-Men" / "9-1-1" are left intact.
@@ -103,39 +118,58 @@ class XtreamPanelService:
     def live_streams(self, category_id=None) -> list[dict]:
         rows = self.ledger.streams("live", self._resolve_group("live", category_id))
         ts = _now_ts()
-        return [{
-            "num": i + 1, "name": r["name"], "stream_type": "live",
-            "stream_id": r["id"], "stream_icon": "", "epg_channel_id": "",
-            "added": ts, "category_id": cat_id("live", r["group_title"]),
-            "custom_sid": "", "tv_archive": 0, "direct_source": "",
-            "tv_archive_duration": 0,
-        } for i, r in enumerate(rows)]
+        out = []
+        for i, r in enumerate(rows):
+            m = _load_md(r)
+            out.append({
+                "num": i + 1, "name": r["name"], "stream_type": "live",
+                "stream_id": r["id"], "stream_icon": m.get("stream_icon", ""),
+                "epg_channel_id": m.get("epg_channel_id", ""),
+                "added": str(m.get("added") or ts),
+                "category_id": cat_id("live", r["group_title"]),
+                "custom_sid": "", "tv_archive": m.get("tv_archive", 0),
+                "direct_source": "",
+                "tv_archive_duration": m.get("tv_archive_duration", 0),
+            })
+        return out
 
     def vod_streams(self, category_id=None) -> list[dict]:
         rows = self.ledger.streams("movie", self._resolve_group("movie", category_id))
         ts = _now_ts()
-        return [{
-            "num": i + 1, "name": clean_title(r["name"]), "stream_type": "movie",
-            "stream_id": r["id"], "stream_icon": "", "rating": 0, "rating_5based": 0,
-            "added": ts, "category_id": cat_id("movie", r["group_title"]),
-            "container_extension": r["container_extension"], "custom_sid": "",
-            "direct_source": "", "tmdb": r["tmdb"], "tmdb_id": r["tmdb"],
-        } for i, r in enumerate(rows)]
+        out = []
+        for i, r in enumerate(rows):
+            m = _load_md(r)
+            out.append({
+                "num": i + 1, "name": clean_title(r["name"]), "stream_type": "movie",
+                "stream_id": r["id"], "stream_icon": m.get("stream_icon", ""),
+                "rating": m.get("rating", 0), "rating_5based": m.get("rating_5based", 0),
+                "added": str(m.get("added") or ts),
+                "category_id": cat_id("movie", r["group_title"]),
+                "container_extension": r["container_extension"], "custom_sid": "",
+                "direct_source": "", "tmdb": r["tmdb"], "tmdb_id": r["tmdb"],
+            })
+        return out
 
     def vod_info(self, vod_id: str) -> dict:
         rows = self.ledger.streams("movie", None)
         match = next((r for r in rows if str(r["id"]) == str(vod_id)), None)
         if not match:
             return {"info": {}, "movie_data": {}}
+        m = _load_md(match)
+        icon = m.get("stream_icon", "")
         return {
+            # plot/cast/director/genre come from get_vod_info (Phase 2, #14) and
+            # stay empty here; poster + rating are available from the list.
             "info": {
-                "movie_image": "", "plot": "", "genre": "", "cast": "",
-                "director": "", "rating": 0, "releasedate": "", "duration": "",
+                "movie_image": icon, "cover_big": icon, "plot": "", "genre": "",
+                "cast": "", "director": "", "rating": m.get("rating", 0),
+                "releasedate": "", "duration": "",
                 "tmdb": match["tmdb"], "tmdb_id": match["tmdb"],
             },
             "movie_data": {
                 "stream_id": match["id"], "name": clean_title(match["name"]),
-                "added": _now_ts(), "category_id": cat_id("movie", match["group_title"]),
+                "added": str(m.get("added") or _now_ts()),
+                "category_id": cat_id("movie", match["group_title"]),
                 "container_extension": match["container_extension"],
                 "custom_sid": "", "direct_source": "",
             },
@@ -145,15 +179,25 @@ class XtreamPanelService:
     def series(self, category_id=None) -> list[dict]:
         rows = self.ledger.series(self._resolve_group("series", category_id))
         ts = _now_ts()
-        return [{
-            "num": i + 1, "series_id": series_id_of(r["series_key"]),
-            "name": clean_title(r["name"]), "cover": "", "plot": "", "cast": "",
-            "director": "", "genre": "", "releaseDate": "", "release_date": "",
-            "last_modified": ts, "rating": 0, "rating_5based": 0,
-            "category_id": cat_id("series", r["grp"]), "backdrop_path": [],
-            "youtube_trailer": "", "episode_run_time": "",
-            "tmdb": r["tmdb"], "tmdb_id": r["tmdb"],
-        } for i, r in enumerate(rows)]
+        out = []
+        for i, r in enumerate(rows):
+            m = _load_md(r).get("series", {})
+            rel = m.get("releaseDate", "")
+            out.append({
+                "num": i + 1, "series_id": series_id_of(r["series_key"]),
+                "name": clean_title(r["name"]), "cover": m.get("cover", ""),
+                "plot": m.get("plot", ""), "cast": m.get("cast", ""),
+                "director": m.get("director", ""), "genre": m.get("genre", ""),
+                "releaseDate": rel, "release_date": rel,
+                "last_modified": str(m.get("last_modified") or ts),
+                "rating": m.get("rating", 0), "rating_5based": m.get("rating_5based", 0),
+                "category_id": cat_id("series", r["grp"]),
+                "backdrop_path": m.get("backdrop_path", []),
+                "youtube_trailer": m.get("youtube_trailer", ""),
+                "episode_run_time": m.get("episode_run_time", ""),
+                "tmdb": r["tmdb"], "tmdb_id": r["tmdb"],
+            })
+        return out
 
     def series_info(self, series_id: str) -> dict:
         target = str(series_id)
@@ -166,25 +210,42 @@ class XtreamPanelService:
         name = clean_title((eps[0]["series_name"] or eps[0]["name"]) if eps else "")
         tmdb = (eps[0]["tmdb"] if eps else "") or ""
         ts = _now_ts()
+        # Series-level metadata rides on the episode rows (the ledger has no
+        # series row); take it from the first episode that carries it.
+        sm: dict = {}
+        for e in eps:
+            sm = _load_md(e).get("series") or {}
+            if sm:
+                break
         episodes: dict[str, list] = {}
         season_counter: dict[int, int] = {}
         for e in eps:
             season = e["season"] if e["season"] is not None else 0
             season_counter[season] = season_counter.get(season, 0) + 1
             ep_num = e["episode"] if e["episode"] is not None else season_counter[season]
+            em = _load_md(e)
             episodes.setdefault(str(season), []).append({
                 "id": str(e["id"]), "episode_num": ep_num,
                 "title": strip_prefix(e["name"]),
                 "container_extension": e["container_extension"], "added": ts,
                 "season": season, "custom_sid": "", "direct_source": "",
-                "info": {"plot": "", "duration": "", "movie_image": "",
-                         "rating": 0, "season": season, "tmdb_id": ""},
+                "info": {"plot": em.get("plot", ""), "duration": em.get("duration", ""),
+                         "movie_image": em.get("movie_image", ""),
+                         "rating": em.get("rating", 0), "air_date": em.get("air_date", ""),
+                         "season": season, "tmdb_id": ""},
             })
         seasons = [{"season_number": s, "name": f"Season {s}"} for s in sorted(season_counter)]
+        rel = sm.get("releaseDate", "")
         return {
             "info": {
-                "name": name, "cover": "", "plot": "", "cast": "", "director": "",
-                "genre": "", "releaseDate": "", "release_date": "", "rating": 0,
+                "name": name, "cover": sm.get("cover", ""), "plot": sm.get("plot", ""),
+                "cast": sm.get("cast", ""), "director": sm.get("director", ""),
+                "genre": sm.get("genre", ""), "releaseDate": rel, "release_date": rel,
+                "rating": sm.get("rating", 0), "rating_5based": sm.get("rating_5based", 0),
+                "backdrop_path": sm.get("backdrop_path", []),
+                "youtube_trailer": sm.get("youtube_trailer", ""),
+                "episode_run_time": sm.get("episode_run_time", ""),
+                "last_modified": str(sm.get("last_modified") or ts),
                 "tmdb": tmdb, "tmdb_id": tmdb,
             },
             "seasons": seasons, "episodes": episodes,

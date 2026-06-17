@@ -9,7 +9,7 @@ from typing import Iterable, Optional
 from ..db import Database
 
 PICK_COLS = ("id,kind,name,group_title,url,extinf,series_key,series_name,"
-             "season,episode,tmdb,provider_id,hash")
+             "season,episode,tmdb,provider_id,hash,metadata")
 
 
 class ItemsRepo:
@@ -29,7 +29,7 @@ class ItemsRepo:
                 r.get("tvg_logo", ""), r.get("url", ""), "",
                 r.get("series_key", ""), r.get("series_name", ""),
                 r.get("season"), r.get("episode"), r.get("tmdb", ""),
-                r.get("provider_id", ""), r["hash"],
+                r.get("provider_id", ""), r["hash"], r.get("metadata", ""),
             ))
             if len(batch) >= 5000:
                 self._insert_batch(cur, batch)
@@ -46,8 +46,8 @@ class ItemsRepo:
         cur.executemany(
             """INSERT INTO items
                (kind,name,group_title,tvg_id,tvg_logo,url,extinf,
-                series_key,series_name,season,episode,tmdb,provider_id,hash)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                series_key,series_name,season,episode,tmdb,provider_id,hash,metadata)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             batch,
         )
 
@@ -118,7 +118,7 @@ class ItemsRepo:
         """Scan-cache row for a series (name/group/tmdb) to label lazily-fetched
         episodes."""
         return self._conn.execute(
-            "SELECT name, group_title, tmdb FROM items "
+            "SELECT name, group_title, tmdb, metadata FROM items "
             "WHERE kind='series' AND series_key=? LIMIT 1", (series_key,)
         ).fetchone()
 
@@ -166,5 +166,5 @@ class ItemsRepo:
     def all_series(self) -> list[sqlite3.Row]:
         """Every series row (name/key/group/tmdb) — for matching by name."""
         return self._conn.execute(
-            "SELECT series_key, name, group_title, tmdb FROM items WHERE kind='series'"
+            "SELECT series_key, name, group_title, tmdb, metadata FROM items WHERE kind='series'"
         ).fetchall()

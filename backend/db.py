@@ -96,6 +96,10 @@ class Database:
         # Lazily-cached total season/episode counts per series (NULL = unknown).
         self._ensure_column("items", "total_seasons", "INTEGER")
         self._ensure_column("items", "total_episodes", "INTEGER")
+        # Forwarded provider metadata (artwork, plot/cast, timestamps, …) as a
+        # JSON blob, so the curated panel can serve real values to Xtream clients.
+        self._ensure_column("items", "metadata", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("imported", "metadata", "TEXT NOT NULL DEFAULT ''")
 
     def _ensure_column(self, table: str, col: str, decl: str) -> None:
         cols = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
