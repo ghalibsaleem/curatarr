@@ -8,10 +8,29 @@ from __future__ import annotations
 
 import json
 import secrets
+import urllib.error
+import urllib.parse
+from datetime import datetime, timezone
 
 from ..errors import ConfigError
 from ..providers.xtream_client import ProviderXC
 from ..repositories.meta import MetaRepo
+
+
+def _summarize_user_info(ui: dict) -> str:
+    """One-line human summary of an Xtream user_info block for the test button."""
+    status = ui.get("status") or ("Active" if ui.get("auth") else "unknown")
+    parts = [f"status: {status}"]
+    mc, ac = ui.get("max_connections"), ui.get("active_cons")
+    if mc not in (None, ""):
+        parts.append(f"conns {ac or 0}/{mc}")
+    exp = ui.get("exp_date")
+    if exp:
+        try:
+            parts.append("expires " + datetime.fromtimestamp(int(exp), timezone.utc).strftime("%Y-%m-%d"))
+        except (ValueError, OSError, TypeError):
+            pass
+    return " · ".join(parts)
 
 
 class SubscriptionsService:
@@ -90,3 +109,20 @@ class SubscriptionsService:
             raise ConfigError("Configure at least one provider subscription first")
         s = subs[0]
         return ProviderXC(s["base"], s["user"], s["pass"])
+
+    def test_source(self, url: str, username: str, password: str) -> str:
+        """Authenticate one subscription's creds and return a one-line summary.
+        Raises on bad URL / unreachable host / invalid credentials."""
+        url = (url or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            raise ConfigError("Server URL must start with http:// or https://")
+        parts = urllib.parse.urlsplit(url)
+        base = f"{parts.scheme}://{parts.netloc}"
+        xc = ProviderXC(base, (username or "").strip(), (password or "").strip(), timeout=15)
+        try:
+            info = xc.authenticate()
+        except urllib.error.HTTPError as e:
+            raise ConfigError(f"Provider returned HTTP {e.code}")
+        except urllib.error.URLError as e:
+            raise ConfigError(f"Cannot reach provider at {base}: {e.reason}")
+        return _summarize_user_info(info.get("user_info", {}))

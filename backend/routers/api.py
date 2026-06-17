@@ -18,10 +18,20 @@ from ..schemas import (
     ImportRequest,
     ScheduleConfig,
     SourceRequest,
+    Sub,
     UnimportRequest,
 )
 
 router = APIRouter(prefix="/api")
+
+
+def _test_result(fn):
+    """Run a connection test, returning {ok, message} either way so the UI can
+    show inline pass/fail instead of treating a failure as a thrown error."""
+    try:
+        return {"ok": True, "message": fn()}
+    except Exception as e:  # noqa: BLE001 - any failure is reported to the user
+        return {"ok": False, "message": str(e)}
 
 
 @router.get("/status")
@@ -66,6 +76,11 @@ def set_source(req: SourceRequest):
         subs.append({"base": f"{parts.scheme}://{parts.netloc}", "user": user, "pass": pwd})
     subscriptions.set_subs(subs)
     return {"subs": [{"url": s["base"], "username": s["user"]} for s in subs]}
+
+
+@router.post("/source/test")
+def source_test(req: Sub):
+    return _test_result(lambda: subscriptions.test_source(req.url, req.username, req.password))
 
 
 @router.post("/sync")
@@ -172,12 +187,22 @@ def downstream_dispatcharr_accounts(req: DiscoverDispatcharr):
         raise ProviderError(str(e))
 
 
+@router.post("/downstream/dispatcharr/test")
+def downstream_dispatcharr_test(req: DiscoverDispatcharr):
+    return _test_result(lambda: downstream.dispatcharr_test(req.url, req.username, req.password))
+
+
 @router.post("/downstream/jellyfin/discover")
 def downstream_jellyfin_discover(req: DiscoverJellyfin):
     try:
         return downstream.jellyfin_discover(req.url, req.api_key)
     except JellyfinError as e:
         raise ProviderError(str(e))
+
+
+@router.post("/downstream/jellyfin/test")
+def downstream_jellyfin_test(req: DiscoverJellyfin):
+    return _test_result(lambda: downstream.jellyfin_test(req.url, req.api_key))
 
 
 @router.post("/downstream/run")
