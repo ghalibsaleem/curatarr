@@ -1,6 +1,7 @@
 """Import / un-import curated picks into the ledger (idempotent by hash)."""
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 from .. import m3u
@@ -97,6 +98,7 @@ class ImportService:
                     continue
                 url = stream_url(primary["base"], primary["user"], primary["pass"],
                                  "series", se["pid"], se["ext"])
+                smeta = srow["metadata"] if "metadata" in srow.keys() else ""
                 rows.append({
                     "kind": "series", "name": se["name"],
                     "group_title": srow["group_title"] or se["group"], "url": url,
@@ -105,6 +107,9 @@ class ImportService:
                     "season": se["season"] if se["season"] is not None else 0,
                     "episode": se["episode"], "tmdb": srow["tmdb"],
                     "provider_id": se["pid"], "hash": stream_hash(url),
+                    # M3U import has no episode detail; carry series-level only.
+                    "metadata": json.dumps({"series": json.loads(smeta)},
+                                           separators=(",", ":")) if smeta else "",
                 })
 
         summary = self._record(rows)

@@ -10,6 +10,17 @@ from urllib.parse import urlsplit
 from ..db import Database
 
 
+def _meta_of(row) -> str:
+    """Forwarded-metadata JSON from a pick row (dict or sqlite3.Row), or '' if
+    the row predates the column."""
+    try:
+        if isinstance(row, sqlite3.Row):
+            return (row["metadata"] if "metadata" in row.keys() else "") or ""
+        return row.get("metadata", "") or ""
+    except (IndexError, KeyError):
+        return ""
+
+
 def container_ext(url: str, kind: str) -> str:
     """Best-effort container extension for Xtream. Live has none -> 'ts'."""
     if kind == "live":
@@ -59,15 +70,15 @@ class LedgerRepo:
             r["hash"], r["kind"], r["name"], r["group_title"], r["url"],
             r["extinf"], r["series_key"], r["series_name"],
             r["season"], r["episode"], container_ext(r["url"], r["kind"]),
-            r["tmdb"], r["provider_id"], source,
+            r["tmdb"], r["provider_id"], source, _meta_of(r),
         ) for r in rows]
         cur = self._conn.cursor()
         before = self.count()
         cur.executemany(
             """INSERT OR IGNORE INTO imported
                (hash,kind,name,group_title,url,extinf,series_key,series_name,
-                season,episode,container_extension,tmdb,provider_id,source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                season,episode,container_extension,tmdb,provider_id,source,metadata)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             recs,
         )
         self._conn.commit()
@@ -110,6 +121,27 @@ class LedgerRepo:
                 )
         self._conn.commit()
 
+    def backfill_metadata_from_items(self) -> None:
+        """Fill empty metadata on existing picks from the freshly-synced scan
+        cache, so picks made before this column gain artwork without re-import.
+        Movie/live match by hash; series episodes inherit the series-level block
+        (wrapped under "series"). Episode-level detail only lands on re-import."""
+        self._conn.execute(
+            "UPDATE imported SET metadata = COALESCE("
+            "  (SELECT i.metadata FROM items i "
+            "   WHERE i.hash=imported.hash AND i.metadata!=''), metadata) "
+            "WHERE metadata='' AND kind IN ('movie','live')"
+        )
+        self._conn.execute(
+            "UPDATE imported SET metadata = ("
+            "  SELECT '{\"series\":' || i.metadata || '}' FROM items i "
+            "  WHERE i.kind='series' AND i.series_key=imported.series_key AND i.metadata!='') "
+            "WHERE metadata='' AND kind='series' AND EXISTS("
+            "  SELECT 1 FROM items i WHERE i.kind='series' "
+            "  AND i.series_key=imported.series_key AND i.metadata!='')"
+        )
+        self._conn.commit()
+
     # --- Xtream wrapper reads --------------------------------------------
     def categories(self, kind: str) -> list[dict]:
         if kind == "series":
@@ -126,7 +158,7 @@ class LedgerRepo:
         return [{"name": r["name"], "count": r["n"]} for r in rows]
 
     def streams(self, kind: str, group: Optional[str]) -> list[sqlite3.Row]:
-        sql = ("SELECT id,name,group_title,url,container_extension,tmdb "
+        sql = ("SELECT id,name,group_title,url,container_extension,tmdb,metadata "
                "FROM imported WHERE kind=?")
         args: list = [kind]
         if group is not None:
@@ -137,7 +169,8 @@ class LedgerRepo:
 
     def series(self, group: Optional[str]) -> list[sqlite3.Row]:
         sql = ("SELECT series_key, MIN(series_name) AS name, MIN(group_title) AS grp, "
-               "MAX(tmdb) AS tmdb, COUNT(*) AS episodes FROM imported WHERE kind='series'")
+               "MAX(tmdb) AS tmdb, MAX(metadata) AS metadata, COUNT(*) AS episodes "
+               "FROM imported WHERE kind='series'")
         args: list = []
         if group is not None:
             sql += " AND group_title=?"
@@ -153,7 +186,7 @@ class LedgerRepo:
 
     def series_episodes(self, series_key: str) -> list[sqlite3.Row]:
         return self._conn.execute(
-            "SELECT id,name,series_name,season,episode,container_extension,url,tmdb "
+            "SELECT id,name,series_name,season,episode,container_extension,url,tmdb,metadata "
             "FROM imported WHERE kind='series' AND series_key=? "
             "ORDER BY season,episode", (series_key,)
         ).fetchall()

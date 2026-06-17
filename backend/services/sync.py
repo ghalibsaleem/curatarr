@@ -6,6 +6,7 @@ episodes are fetched lazily on open/import.
 """
 from __future__ import annotations
 
+import json
 import threading
 from datetime import datetime, timezone
 
@@ -15,6 +16,49 @@ from ..repositories.items import ItemsRepo
 from ..repositories.ledger import LedgerRepo
 from ..repositories.meta import MetaRepo
 from .subscriptions import SubscriptionsService
+
+
+def _meta(fields: dict) -> str:
+    """JSON-encode forwarded metadata, dropping empty values to stay compact.
+    The panel defaults anything absent, so empties don't need storing."""
+    kept = {k: v for k, v in fields.items() if v not in ("", 0, [], None, "0")}
+    return json.dumps(kept, separators=(",", ":")) if kept else ""
+
+
+def _live_meta(s: dict) -> str:
+    return _meta({
+        "stream_icon": s.get("stream_icon"),
+        "epg_channel_id": s.get("epg_channel_id"),
+        "tv_archive": s.get("tv_archive"),
+        "tv_archive_duration": s.get("tv_archive_duration"),
+        "added": s.get("added"),
+    })
+
+
+def _movie_meta(s: dict) -> str:
+    return _meta({
+        "stream_icon": s.get("stream_icon"),
+        "rating": s.get("rating"),
+        "rating_5based": s.get("rating_5based"),
+        "added": s.get("added"),
+    })
+
+
+def _series_meta(s: dict) -> str:
+    return _meta({
+        "cover": s.get("cover"),
+        "plot": s.get("plot"),
+        "cast": s.get("cast"),
+        "director": s.get("director"),
+        "genre": s.get("genre"),
+        "rating": s.get("rating"),
+        "rating_5based": s.get("rating_5based"),
+        "releaseDate": s.get("releaseDate") or s.get("release_date"),
+        "backdrop_path": s.get("backdrop_path"),
+        "youtube_trailer": s.get("youtube_trailer"),
+        "episode_run_time": s.get("episode_run_time"),
+        "last_modified": s.get("last_modified"),
+    })
 
 
 class SyncService:
@@ -58,7 +102,7 @@ class SyncService:
                     "tvg_logo": s.get("stream_icon") or "", "url": url,
                     "series_key": "", "series_name": "", "season": None,
                     "episode": None, "tmdb": "", "provider_id": pid,
-                    "hash": stream_hash(url),
+                    "hash": stream_hash(url), "metadata": _live_meta(s),
                 })
             for cid, cname in vod_cat.items():
                 for s in xc.vod_streams(cid):
@@ -70,7 +114,7 @@ class SyncService:
                         "url": url, "series_key": "", "series_name": "",
                         "season": None, "episode": None,
                         "tmdb": str(s.get("tmdb") or ""), "provider_id": pid,
-                        "hash": stream_hash(url),
+                        "hash": stream_hash(url), "metadata": _movie_meta(s),
                     })
             for s in xc.series():
                 sid = str(s.get("series_id"))
@@ -81,12 +125,13 @@ class SyncService:
                     "series_key": sid, "series_name": s.get("name", ""),
                     "season": None, "episode": None,
                     "tmdb": str(s.get("tmdb") or ""), "provider_id": "",
-                    "hash": f"series:{sid}",
+                    "hash": f"series:{sid}", "metadata": _series_meta(s),
                 })
         except Exception as e:
             raise ProviderError(f"Xtream fetch failed: {e}")
 
         count = self.items.replace_all(rows)
         self.ledger.backfill_from_items()  # existing picks gain tmdb + provider_id
+        self.ledger.backfill_metadata_from_items()  # …and forwarded metadata
         self.meta.set("last_sync", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         return count
