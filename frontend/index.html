@@ -21,8 +21,22 @@
       <button id="dsRunHeader" title="Push curated picks downstream: refresh Dispatcharr, then Jellyfin">Downstream sync</button>
       <span id="dsHeaderSpinner" class="spinner hidden" title="Syncing downstream…"></span>
       <button id="settingsBtn" title="Source, import, Xtream & stats">⚙ Settings</button>
+      <button id="logoutBtn" title="Sign out">Sign out</button>
     </div>
   </header>
+
+  <div id="authOverlay" class="auth-overlay hidden">
+    <form id="authForm" class="auth-card" autocomplete="on">
+      <h2 id="authTitle">Sign in</h2>
+      <p id="authHint" class="hint"></p>
+      <label>Username</label>
+      <input id="authUser" type="text" autocomplete="username" />
+      <label>Password</label>
+      <input id="authPass" type="password" autocomplete="current-password" />
+      <p id="authError" class="auth-error"></p>
+      <button id="authSubmit" type="submit" class="primary">Sign in</button>
+    </form>
+  </div>
 
   <main>
     <aside id="sidebar">
@@ -88,6 +102,7 @@
           <li data-section="xtream">Xtream</li>
           <li data-section="downstream">Downstream</li>
           <li data-section="schedule">Schedule</li>
+          <li data-section="account">Account</li>
         </ul>
         <div id="settingsContent">
 
@@ -217,6 +232,20 @@
               <button id="schSave" class="primary">Save</button>
             </div>
             <div id="schLast"></div>
+          </section>
+
+          <section class="panel hidden" data-panel="account">
+            <h3>Account</h3>
+            <p class="hint">Signed in as <strong id="acctUser">—</strong>. This is the
+              login for the Curatarr UI (separate from the Xtream wrapper credentials).</p>
+            <label>Current password</label>
+            <input id="acctCurrent" type="password" autocomplete="current-password" />
+            <label>New password</label>
+            <input id="acctNew" type="password" autocomplete="new-password" />
+            <p class="hint" id="acctMsg"></p>
+            <div class="modal-foot">
+              <button id="acctSave" class="primary">Change password</button>
+            </div>
           </section>
 
         </div>

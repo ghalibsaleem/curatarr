@@ -196,6 +196,28 @@ button.danger:hover { border-color: #e5484d; background: #3a1d22; }
 .ds-2col { display: flex; gap: .7rem; }
 .ds-2col > div { flex: 1; min-width: 0; }
 
+/* --- Auth overlay (login / first-run setup) --- */
+.auth-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--bg); display: flex; align-items: center; justify-content: center;
+}
+/* Must beat `.auth-overlay { display: flex }` above (equal specificity, later in
+   the file) — same pattern as `.modal.hidden`. */
+.auth-overlay.hidden { display: none; }
+.auth-card {
+  width: min(360px, 90vw); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; padding: 1.4rem 1.5rem;
+  display: flex; flex-direction: column;
+}
+.auth-card h2 { margin: 0 0 .3rem; }
+.auth-card label { font-size: .8rem; color: var(--muted); margin: .6rem 0 .2rem; }
+.auth-card input {
+  background: var(--bg); border: 1px solid var(--line); color: var(--text);
+  border-radius: 6px; padding: .55rem .6rem; font-size: .9rem;
+}
+.auth-card button { margin-top: 1rem; }
+.auth-error { color: #f87171; font-size: .82rem; min-height: 1.1em; margin: .5rem 0 0; }
+
 /* --- Schedule panel --- */
 .ck { display: flex; align-items: center; gap: .5rem; color: var(--text);
   font-size: .9rem; margin: .5rem 0; cursor: pointer; }

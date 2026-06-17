@@ -65,6 +65,16 @@ class DiscoverJellyfin(BaseModel):
     api_key: str
 
 
+class AuthCredentials(BaseModel):
+    username: str
+    password: str
+
+
+class ChangePassword(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class ScheduleConfig(BaseModel):
     enabled: bool = False
     frequency: Literal["daily", "twice-weekly", "weekly", "monthly"] = "daily"
