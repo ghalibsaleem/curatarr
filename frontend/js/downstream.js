@@ -132,6 +132,32 @@ $("#dsJfDiscover").onclick = async () => {
   finally { btn.disabled = false; }
 };
 
+// --- connection tests -------------------------------------------------------
+async function runTest(btn, statusEl, path, body) {
+  statusEl.textContent = "Testing…"; statusEl.className = "sub-status";
+  btn.disabled = true;
+  try {
+    const r = await jsonPost(path, body);
+    statusEl.textContent = (r.ok ? "✓ " : "✕ ") + r.message;
+    statusEl.className = "sub-status " + (r.ok ? "test-ok" : "test-err");
+  } catch (e) {
+    statusEl.textContent = "✕ " + e; statusEl.className = "sub-status test-err";
+  } finally { btn.disabled = false; }
+}
+
+$("#dsDispTest").onclick = () => runTest($("#dsDispTest"), $("#dsDispStatus"),
+  "/api/downstream/dispatcharr/test", {
+    url: $("#dsDispUrl").value.trim(),
+    username: $("#dsDispUser").value.trim(),
+    password: $("#dsDispPass").value,
+  });
+
+$("#dsJfTest").onclick = () => runTest($("#dsJfTest"), $("#dsJfStatus"),
+  "/api/downstream/jellyfin/test", {
+    url: $("#dsJfUrl").value.trim(),
+    api_key: $("#dsJfKey").value,
+  });
+
 // --- save + run -------------------------------------------------------------
 $("#dsSave").onclick = async () => {
   try { await save(false); } catch (e) { toast("Save failed: " + e); }

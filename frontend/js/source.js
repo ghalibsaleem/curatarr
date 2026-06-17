@@ -4,13 +4,30 @@ import { refreshStatus, runSync } from "./status.js";
 
 function subRow(sub) {
   sub = sub || {};
+  const wrap = el("div", "subrow-wrap");
   const row = el("div", "subrow");
   const url = el("input", "sub-url"); url.type = "text"; url.placeholder = "Server URL (http://provider:80)"; url.value = sub.url || "";
   const u = el("input", "sub-user"); u.type = "text"; u.placeholder = "username"; u.value = sub.username || "";
   const p = el("input", "sub-pass"); p.type = "text"; p.placeholder = "password"; p.value = sub.password || "";
-  const rm = el("button", "", "✕"); rm.type = "button"; rm.title = "Remove"; rm.onclick = () => row.remove();
-  row.append(url, u, p, rm);
-  return row;
+  const test = el("button", "", "Test"); test.type = "button"; test.title = "Test connection";
+  const rm = el("button", "", "✕"); rm.type = "button"; rm.title = "Remove"; rm.onclick = () => wrap.remove();
+  const status = el("span", "sub-status");
+  test.onclick = async () => {
+    status.textContent = "Testing…"; status.className = "sub-status";
+    test.disabled = true;
+    try {
+      const r = await jsonPost("/api/source/test", {
+        url: url.value.trim(), username: u.value.trim(), password: p.value.trim(),
+      });
+      status.textContent = (r.ok ? "✓ " : "✕ ") + r.message;
+      status.className = "sub-status " + (r.ok ? "test-ok" : "test-err");
+    } catch (e) {
+      status.textContent = "✕ " + e; status.className = "sub-status test-err";
+    } finally { test.disabled = false; }
+  };
+  row.append(url, u, p, test, rm);
+  wrap.append(row, status);
+  return wrap;
 }
 
 export async function renderSource() {

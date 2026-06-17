@@ -75,6 +75,17 @@ class DownstreamService:
             "tasks": [{"id": t.get("Id"), "name": t.get("Name")} for t in client.tasks()],
         }
 
+    # --- connection tests (reachability + auth, no side effects) ----------
+    def dispatcharr_test(self, url: str, username: str, password: str) -> str:
+        client = DispatcharrClient(url, username, password, timeout=15)
+        n = len(client.accounts())  # implicitly does the JWT login
+        return f"Connected · {n} M3U account{'' if n == 1 else 's'} visible"
+
+    def jellyfin_test(self, url: str, api_key: str) -> str:
+        client = JellyfinClient(url, api_key, timeout=15)
+        n = len(client.libraries())  # validates the API key
+        return f"Connected · {n} librar{'y' if n == 1 else 'ies'}"
+
     # --- the orchestrated run --------------------------------------------
     def run(self) -> dict:
         cfg = self.get_config()
