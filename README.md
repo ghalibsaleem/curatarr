@@ -57,6 +57,11 @@ PROVIDER Xtream API ──read catalogue──▶  Curatarr  ──serve only PI
   the header **Downstream sync** button) refreshes each curated Dispatcharr XC
   account, then runs the Jellyfin Xtream-library plugin sync and refreshes only
   the libraries you pick — in sequence, with per-step status.
+- **Scheduled auto-sync** = **Settings → Schedule** runs the provider sync on a
+  cron schedule (daily / twice-weekly / weekly / monthly, at a time in a timezone
+  you pick), optionally chaining the downstream sync after each run. A slot missed
+  while the app was offline is skipped (next slot is used); the Overview panel
+  shows the next run and the last auto-sync result.
 
 ## Run locally
 
@@ -97,25 +102,27 @@ Then, in Dispatcharr → M3U & EPG Manager, add **each** account shown under
 
 ## Publishing the image (GHCR)
 
-A GitHub Action (`.github/workflows/docker-publish.yml`) builds a **multi-arch**
-image (amd64 + arm64 — Intel/AMD, Apple Silicon, 64-bit Raspberry Pi) and pushes
-it to `ghcr.io/<owner>/curatarr`. Docker pulls the right architecture
-automatically. (32-bit ARM isn't built — pydantic's Rust core has no armv7
-wheels; use 64-bit Pi OS.)
+Two chained GitHub Actions build a **multi-arch** image (amd64 + arm64 —
+Intel/AMD, Apple Silicon, 64-bit Raspberry Pi) and push it to
+`ghcr.io/<owner>/curatarr`. Docker pulls the right architecture automatically.
+(32-bit ARM isn't built — pydantic's Rust core has no armv7 wheels; use 64-bit
+Pi OS.) `docker-release.yml` builds the version/edge tags; when a release build
+succeeds, `docker-latest.yml` promotes that exact digest to `:latest` — so
+`:latest` tracks the newest **release**, not main HEAD.
 
 Tag scheme:
 
 | Tag | Source | Use |
 |-----|--------|-----|
-| `:latest` | push to **main** (HEAD) | current deployable version |
-| `:edge` | push to **beta** branch | pre-release testing |
 | `:X.Y.Z`, `:X.Y` | push a **`vX.Y.Z`** git tag | pin a frozen release |
+| `:latest` | promoted automatically after a successful `vX.Y.Z` build | newest release |
+| `:edge` | push to **beta** branch | pre-release testing |
 
 ```bash
 git remote add origin git@github.com:<you>/curatarr.git
-git push -u origin main              # → ghcr.io/<you>/curatarr:latest
-git tag v0.4.1 && git push --tags    # → :0.4.1 and :0.4
+git tag v0.4.1 && git push --tags    # → :0.4.1, :0.4, then :latest (promoted)
 git push origin beta                 # → :edge (pre-release)
+# (a plain push to main no longer publishes an image)
 ```
 
 Then either make the GHCR package **public** (GitHub → Packages → curatarr →
@@ -142,9 +149,11 @@ Internal (UI):
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET`  | `/api/status` | counts + saved source + last sync |
+| `GET`  | `/api/status` | counts + saved source + last sync + next scheduled sync |
 | `GET`/`POST` | `/api/source` | view / save the provider subscriptions (`{subs:[{url,username,password}]}`) |
 | `POST` | `/api/sync` | pull provider catalogue + rebuild index |
+| `GET`/`POST` | `/api/schedule` | view / save the auto-sync schedule (frequency, time, tz, downstream) |
+| `POST` | `/api/schedule/preview` | next run for an unsaved schedule (live UI preview) |
 | `GET`  | `/api/groups?kind=live\|movie\|series` | categories w/ counts |
 | `GET`  | `/api/items?kind=live\|movie&group=&q=&page=` | paginated items |
 | `GET`  | `/api/series?group=&q=&page=` | paginated series (one row each) |
@@ -166,10 +175,9 @@ Public (consumed by Dispatcharr): `GET /player_api.php` (Xtream actions),
 
 ## Roadmap
 
-- **Scheduled auto-sync** (#4): background provider sync on an interval, then
-  chain the downstream sync.
-- "New since last sync" diff view.
-- Multi-provider merge.
+- "New since last sync" diff view (#6).
+- Export curated picks as an M3U playlist (#10).
+- Multi-provider merge (#8).
 
 ## License
 

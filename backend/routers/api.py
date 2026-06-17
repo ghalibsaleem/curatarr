@@ -6,7 +6,7 @@ import urllib.parse
 from fastapi import APIRouter, File, Query, Request, UploadFile
 
 from .. import __version__
-from ..container import catalog, downstream, imports, subscriptions, sync
+from ..container import catalog, downstream, imports, scheduler, subscriptions, sync
 from ..errors import ConfigError, ProviderError
 from ..providers.dispatcharr_client import DispatcharrError
 from ..providers.jellyfin_client import JellyfinError
@@ -16,6 +16,7 @@ from ..schemas import (
     DiscoverJellyfin,
     DownstreamConfig,
     ImportRequest,
+    ScheduleConfig,
     SourceRequest,
     UnimportRequest,
 )
@@ -26,12 +27,16 @@ router = APIRouter(prefix="/api")
 @router.get("/status")
 def status():
     subs = subscriptions.get_subs()
+    sched = scheduler.status()
     return {
         "version": __version__,
         "source_url": subs[0]["base"] if subs else "",
         "sub_count": len(subs),
         "last_sync": subscriptions.meta.get("last_sync"),
         "counts": catalog.counts(),
+        "auto_sync": sched["config"]["enabled"],
+        "next_sync": sched["next_sync"],
+        "last_auto_sync": sched["last_result"],
     }
 
 
@@ -67,6 +72,23 @@ def set_source(req: SourceRequest):
 def do_sync():
     count = sync.run()
     return {"parsed": count, "counts": catalog.counts()}
+
+
+@router.get("/schedule")
+def get_schedule():
+    return scheduler.status()
+
+
+@router.post("/schedule")
+def set_schedule(req: ScheduleConfig):
+    scheduler.set_config(req.model_dump())
+    return scheduler.status()
+
+
+@router.post("/schedule/preview")
+def preview_schedule(req: ScheduleConfig):
+    nxt = scheduler.preview(req.model_dump())
+    return {"next_sync": nxt.isoformat(timespec="seconds") if nxt else None}
 
 
 @router.get("/groups")

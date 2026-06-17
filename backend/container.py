@@ -13,6 +13,7 @@ from .repositories.meta import MetaRepo
 from .services.catalog import CatalogService
 from .services.downstream import DownstreamService
 from .services.imports import ImportService
+from .services.scheduler import SchedulerService
 from .services.subscriptions import SubscriptionsService
 from .services.sync import SyncService
 from .services.xtream_panel import XtreamPanelService
@@ -30,6 +31,7 @@ sync = SyncService(subscriptions, items, ledger, meta)
 imports = ImportService(items, ledger, catalog)
 panel = XtreamPanelService(ledger)
 downstream = DownstreamService(meta)
+scheduler = SchedulerService(meta, sync, downstream)
 
 
 def _seed() -> None:

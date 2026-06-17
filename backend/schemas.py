@@ -1,6 +1,8 @@
 """Pydantic request models for the API layer."""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -61,3 +63,13 @@ class DiscoverDispatcharr(BaseModel):
 class DiscoverJellyfin(BaseModel):
     url: str
     api_key: str
+
+
+class ScheduleConfig(BaseModel):
+    enabled: bool = False
+    frequency: Literal["daily", "twice-weekly", "weekly", "monthly"] = "daily"
+    time: str = "03:00"                  # HH:MM, in `tz`
+    days: list[int] = [0]               # cron weekday(s): 0=Sun … 6=Sat
+    day_of_month: int = 1               # used by the monthly frequency
+    tz: str = "UTC"                     # IANA timezone name
+    downstream: bool = False            # chain the downstream sync after each run

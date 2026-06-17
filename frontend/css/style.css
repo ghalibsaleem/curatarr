@@ -191,6 +191,18 @@ button.danger:hover { border-color: #e5484d; background: #3a1d22; }
 .ds-group button { margin-top: .55rem; }
 .ds-2col { display: flex; gap: .7rem; }
 .ds-2col > div { flex: 1; min-width: 0; }
+
+/* --- Schedule panel --- */
+.ck { display: flex; align-items: center; gap: .5rem; color: var(--text);
+  font-size: .9rem; margin: .5rem 0; cursor: pointer; }
+.ck input { width: auto; }
+.sch-days { display: flex; flex-wrap: wrap; gap: .3rem; }
+.sch-day {
+  padding: .35rem .55rem; font-size: .8rem; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer;
+}
+.sch-day:hover { background: var(--panel2); color: var(--text); }
+.sch-day.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .ds-libs { display: flex; flex-direction: column; gap: .15rem; margin-top: .2rem; }
 .ds-lib { display: flex; align-items: center; gap: .5rem; color: var(--text);
   font-size: .85rem; margin: 0; cursor: pointer; }

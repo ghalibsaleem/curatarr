@@ -6,16 +6,28 @@ Run: uvicorn backend.main:app
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
+from .container import scheduler
 from .errors import AppError
 from .routers import api, xtream
 
-app = FastAPI(title="Curatarr")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start the scheduled auto-sync loop (needs a running event loop, so it can't
+    # be started in the composition root).
+    scheduler.start()
+    yield
+    await scheduler.stop()
+
+
+app = FastAPI(title="Curatarr", lifespan=lifespan)
 
 
 @app.exception_handler(AppError)
