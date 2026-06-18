@@ -40,6 +40,13 @@ app.include_router(api.router)
 app.include_router(xtream.router)
 
 
+@app.get("/healthz")
+def healthz():
+    # Unauthenticated liveness probe for container healthchecks — must stay
+    # outside the auth-gated /api router.
+    return {"ok": True}
+
+
 @app.get("/")
 def index():
     return FileResponse(os.path.join(settings.frontend_dir, "index.html"))
