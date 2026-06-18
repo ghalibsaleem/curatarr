@@ -36,8 +36,9 @@ services:
       # dataset (snapshotted); kept in a data/ subdir of the repo.
       - /mnt/MainPool/AppsStorage/Curatarr/data:/data
     healthcheck:
+      # Hit the unauthenticated /healthz — /api/* requires a login session.
       test: ["CMD", "python", "-c",
-             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/status', timeout=5).status==200 else 1)"]
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).status==200 else 1)"]
       interval: 30s
       timeout: 6s
       retries: 3
